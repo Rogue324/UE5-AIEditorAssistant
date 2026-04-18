@@ -12,6 +12,5 @@ The editor now supports configuring and sending chat requests directly from Unre
 - The request includes `Authorization: Bearer <API Key>`.
 - The panel parses OpenAI-compatible responses from `choices[0].message.content` and appends them to chat history.
 
-## Plugin Location
 
 - `Plugins/AIGatewayEditor`
