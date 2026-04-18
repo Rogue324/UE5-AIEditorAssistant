@@ -1,17 +1,16 @@
 # UE5-AIGateway
 
-一个用于 UE5 编辑器的大模型网关插件实验项目。
+An experimental UE5 editor plugin project for connecting to LLM gateway services.
 
-## 当前进度
+## Current Status
 
-已支持在编辑器内直接配置并发送聊天请求：
+The editor now supports configuring and sending chat requests directly from Unreal Editor:
 
-- 在菜单 `Window -> AI Gateway` 打开聊天面板。
-- 可输入并保存 `Base URL`、`API Key`、`Model` 配置。
-- 点击“保存配置并发送”后，会发起 `POST {BaseURL}/chat/completions` 请求。
-- 请求头包含 `Authorization: Bearer <API Key>`。
-- 对 OpenAI 兼容响应的 `choices[0].message.content` 做解析并显示到对话记录。
+- Open the panel from `Window -> AI Gateway`.
+- Configure and save `Base URL`, `API Key`, and `Model`.
+- Click **Save Configuration and Send** to send a `POST {BaseURL}/chat/completions` request.
+- The request includes `Authorization: Bearer <API Key>`.
+- The panel parses OpenAI-compatible responses from `choices[0].message.content` and appends them to chat history.
 
-## 插件位置
 
 - `Plugins/AIGatewayEditor`
