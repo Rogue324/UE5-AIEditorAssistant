@@ -143,7 +143,25 @@ namespace
 
 void SAIGatewayMarkdownMessageBody::Construct(const FArguments& InArgs)
 {
-    const TArray<FAIGatewayMarkdownBlock> Blocks = FAIGatewayMarkdownParser::ParseBlocks(InArgs._MarkdownText);
+    RebuildContent(InArgs._MarkdownText);
+}
+
+void SAIGatewayMarkdownMessageBody::SetMarkdownText(const FString& InMarkdownText)
+{
+    if (bHasBuiltContent && MarkdownText == InMarkdownText)
+    {
+        return;
+    }
+
+    RebuildContent(InMarkdownText);
+}
+
+void SAIGatewayMarkdownMessageBody::RebuildContent(const FString& InMarkdownText)
+{
+    MarkdownText = InMarkdownText;
+    bHasBuiltContent = true;
+
+    const TArray<FAIGatewayMarkdownBlock> Blocks = FAIGatewayMarkdownParser::ParseBlocks(MarkdownText);
     TSharedRef<SVerticalBox> ContentBox = SNew(SVerticalBox);
     FString CombinedRichText;
     const FString PlainTextContent = BuildPlainTextSelectionContent(Blocks);

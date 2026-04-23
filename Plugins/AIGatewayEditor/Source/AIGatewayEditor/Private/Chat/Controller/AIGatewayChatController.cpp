@@ -17,6 +17,11 @@ namespace
             "You can inspect and operate the live UE editor through the provided tools. Treat these tools as your primary source of truth for questions about the current project, level, actors, assets, Blueprints, PIE state, logs, console variables, or editor configuration.\n"
             "When the user asks about current editor or project state, do not guess from memory. Call the relevant tool first, then answer from the tool result.\n"
             "Prefer a small number of targeted tool calls. Do not repeatedly call the same tool with the same arguments.\n"
+            "Python scripting is not available to this chat agent. Never say you will use Python, never generate Python scripts, and never switch to Python when a task is complex. Ignore any earlier assistant message that suggested using Python.\n"
+            "Use only the provided native tools. If a task cannot be completed with the native tools, explain the limitation instead of proposing Python.\n"
+            "For adding components to actors, use add-component. Do not write Python for component creation when add-component is available.\n"
+            "For creating Blueprint member variables, use add-blueprint-variable. Do not use Python for Blueprint variable creation.\n"
+            "For Blueprint EventGraph logic, build incrementally with add-blueprint-k2-node, add-blueprint-variable, query-blueprint-graph, connect-graph-pins, set-node-property, set-node-position, compile-blueprint, and save-asset. Do not use or propose Python for Blueprint graph construction.\n"
             "After you have enough information, stop calling tools and give the final answer.\n"
             "For destructive or state-changing actions, explain the intended action briefly and rely on the editor confirmation flow when approval is required.\n"
             "Reply in the user's language unless the user asks otherwise.");
@@ -43,6 +48,24 @@ namespace
         return Output;
     }
 
+    FString NormalizeToolArgumentsJson(const FString& ArgumentsJson)
+    {
+        const FString TrimmedJson = ArgumentsJson.TrimStartAndEnd();
+        if (TrimmedJson.IsEmpty())
+        {
+            return TEXT("{}");
+        }
+
+        TSharedPtr<FJsonObject> Object;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(TrimmedJson);
+        if (FJsonSerializer::Deserialize(Reader, Object) && Object.IsValid())
+        {
+            return SerializeJsonObject(Object);
+        }
+
+        return TEXT("{}");
+    }
+
     TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
     {
         if (JsonText.IsEmpty())
@@ -60,6 +83,73 @@ namespace
         TSharedPtr<FJsonObject> FallbackObject = MakeShared<FJsonObject>();
         FallbackObject->SetStringField(TEXT("__raw_arguments"), JsonText);
         return FallbackObject;
+    }
+
+    bool TryReadFunctionArgumentsJson(const TSharedPtr<FJsonObject>& FunctionObject, FString& OutArgumentsJson)
+    {
+        OutArgumentsJson = TEXT("{}");
+        if (!FunctionObject.IsValid())
+        {
+            return false;
+        }
+
+        FString ArgumentsString;
+        if (FunctionObject->TryGetStringField(TEXT("arguments"), ArgumentsString))
+        {
+            OutArgumentsJson = NormalizeToolArgumentsJson(ArgumentsString);
+            return true;
+        }
+
+        const TSharedPtr<FJsonObject>* ArgumentsObject = nullptr;
+        if (FunctionObject->TryGetObjectField(TEXT("arguments"), ArgumentsObject) && ArgumentsObject != nullptr && (*ArgumentsObject).IsValid())
+        {
+            OutArgumentsJson = SerializeJsonObject(*ArgumentsObject);
+            return true;
+        }
+
+        return false;
+    }
+
+    TSharedPtr<FJsonObject> SanitizeRequestMessageObject(const TSharedPtr<FJsonObject>& MessageObject)
+    {
+        if (!MessageObject.IsValid())
+        {
+            return nullptr;
+        }
+
+        TSharedPtr<FJsonObject> SanitizedObject = ParseJsonObject(SerializeJsonObject(MessageObject));
+
+        FString Role;
+        SanitizedObject->TryGetStringField(TEXT("role"), Role);
+        if (!Role.Equals(TEXT("assistant"), ESearchCase::IgnoreCase))
+        {
+            return SanitizedObject;
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* ToolCalls = nullptr;
+        if (!SanitizedObject->TryGetArrayField(TEXT("tool_calls"), ToolCalls))
+        {
+            return SanitizedObject;
+        }
+
+        for (const TSharedPtr<FJsonValue>& ToolCallValue : *ToolCalls)
+        {
+            const TSharedPtr<FJsonObject>* ToolCallObject = nullptr;
+            if (!ToolCallValue.IsValid() || !ToolCallValue->TryGetObject(ToolCallObject) || ToolCallObject == nullptr || !(*ToolCallObject).IsValid())
+            {
+                continue;
+            }
+
+            const TSharedPtr<FJsonObject>* FunctionObject = nullptr;
+            if ((*ToolCallObject)->TryGetObjectField(TEXT("function"), FunctionObject) && FunctionObject != nullptr && (*FunctionObject).IsValid())
+            {
+                FString NormalizedArgumentsJson;
+                TryReadFunctionArgumentsJson(*FunctionObject, NormalizedArgumentsJson);
+                (*FunctionObject)->SetStringField(TEXT("arguments"), NormalizedArgumentsJson);
+            }
+        }
+
+        return SanitizedObject;
     }
 
     FString TruncateWithEllipsis(const FString& InText, const int32 MaxLength)
@@ -465,7 +555,7 @@ bool FAIGatewayChatController::IsGeneratingTitle() const
 
 int32 FAIGatewayChatController::GetConfiguredMaxToolRounds() const
 {
-    return FMath::Clamp(GetDefault<UAIGatewayEditorSettings>()->MaxToolRounds, 1, 64);
+    return FMath::Max(GetDefault<UAIGatewayEditorSettings>()->MaxToolRounds, 1);
 }
 
 bool FAIGatewayChatController::ShouldShowToolActivityInChat() const
@@ -1046,8 +1136,8 @@ void FAIGatewayChatController::HandleChatResponse(const FAIGatewayChatServiceRes
             FAIGatewayPendingToolCall ToolCall;
             ToolCall.Id = StreamingToolCall.Id;
             ToolCall.Name = StreamingToolCall.Name;
-            ToolCall.ArgumentsJson = StreamingToolCall.ArgumentsJson;
-            ToolCall.Arguments = ParseJsonObject(StreamingToolCall.ArgumentsJson);
+            ToolCall.ArgumentsJson = NormalizeToolArgumentsJson(StreamingToolCall.ArgumentsJson);
+            ToolCall.Arguments = ParseJsonObject(ToolCall.ArgumentsJson);
             ParsedToolCalls.Add(ToolCall);
         }
     }
@@ -1340,9 +1430,10 @@ bool FAIGatewayChatController::TryParseToolCallsFromMessage(const TSharedPtr<FJs
         if ((*ToolCallObject)->TryGetObjectField(TEXT("function"), FunctionObject) && FunctionObject != nullptr && (*FunctionObject).IsValid())
         {
             (*FunctionObject)->TryGetStringField(TEXT("name"), ParsedToolCall.Name);
-            (*FunctionObject)->TryGetStringField(TEXT("arguments"), ParsedToolCall.ArgumentsJson);
+            TryReadFunctionArgumentsJson(*FunctionObject, ParsedToolCall.ArgumentsJson);
         }
 
+        ParsedToolCall.ArgumentsJson = NormalizeToolArgumentsJson(ParsedToolCall.ArgumentsJson);
         ParsedToolCall.Arguments = ParseJsonObject(ParsedToolCall.ArgumentsJson);
         OutToolCalls.Add(ParsedToolCall);
     }
@@ -1371,7 +1462,7 @@ TSharedPtr<FJsonObject> FAIGatewayChatController::BuildAssistantMessageObject(co
         {
             TSharedPtr<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
             FunctionObject->SetStringField(TEXT("name"), ToolCall.Name);
-            FunctionObject->SetStringField(TEXT("arguments"), ToolCall.ArgumentsJson);
+            FunctionObject->SetStringField(TEXT("arguments"), NormalizeToolArgumentsJson(ToolCall.ArgumentsJson));
 
             TSharedPtr<FJsonObject> ToolCallObject = MakeShared<FJsonObject>();
             ToolCallObject->SetStringField(TEXT("id"), ToolCall.Id);
@@ -1406,7 +1497,11 @@ TArray<TSharedPtr<FJsonValue>> FAIGatewayChatController::BuildRequestMessages() 
         {
             if (Message.IsValid())
             {
-                Messages.Add(MakeShared<FJsonValueObject>(Message));
+                TSharedPtr<FJsonObject> SanitizedMessage = SanitizeRequestMessageObject(Message);
+                if (SanitizedMessage.IsValid())
+                {
+                    Messages.Add(MakeShared<FJsonValueObject>(SanitizedMessage));
+                }
             }
         }
     }
