@@ -114,6 +114,34 @@ namespace
         return CombinedText;
     }
 
+    FString ExtractTextFromOutputItems(const TArray<TSharedPtr<FJsonValue>>& OutputItems)
+    {
+        FString CombinedText;
+        for (const TSharedPtr<FJsonValue>& ItemValue : OutputItems)
+        {
+            const TSharedPtr<FJsonObject>* ItemObject = nullptr;
+            if (!ItemValue.IsValid() || !ItemValue->TryGetObject(ItemObject) || ItemObject == nullptr || !(*ItemObject).IsValid())
+            {
+                continue;
+            }
+
+            FString DirectText;
+            if ((*ItemObject)->TryGetStringField(TEXT("text"), DirectText) && !DirectText.IsEmpty())
+            {
+                CombinedText.Append(DirectText);
+                continue;
+            }
+
+            const TArray<TSharedPtr<FJsonValue>>* ContentArray = nullptr;
+            if ((*ItemObject)->TryGetArrayField(TEXT("content"), ContentArray) && ContentArray != nullptr && ContentArray->Num() > 0)
+            {
+                CombinedText.Append(ExtractTextFromContentParts(*ContentArray));
+            }
+        }
+
+        return CombinedText;
+    }
+
     FString ExtractAssistantContentFromMessage(const TSharedPtr<FJsonObject>& MessageObject)
     {
         if (!MessageObject.IsValid())
@@ -134,6 +162,62 @@ namespace
         }
 
         return FString();
+    }
+
+    FString ExtractAssistantContentFromResponseObject(const TSharedPtr<FJsonObject>& ResponseObject)
+    {
+        if (!ResponseObject.IsValid())
+        {
+            return FString();
+        }
+
+        FString OutputText;
+        if (ResponseObject->TryGetStringField(TEXT("output_text"), OutputText) && !OutputText.IsEmpty())
+        {
+            return OutputText;
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* OutputArray = nullptr;
+        if (ResponseObject->TryGetArrayField(TEXT("output"), OutputArray) && OutputArray != nullptr && OutputArray->Num() > 0)
+        {
+            const FString CombinedOutput = ExtractTextFromOutputItems(*OutputArray);
+            if (!CombinedOutput.IsEmpty())
+            {
+                return CombinedOutput;
+            }
+        }
+
+        const TSharedPtr<FJsonObject>* NestedResponse = nullptr;
+        if (ResponseObject->TryGetObjectField(TEXT("response"), NestedResponse) && NestedResponse != nullptr && (*NestedResponse).IsValid())
+        {
+            return ExtractAssistantContentFromResponseObject(*NestedResponse);
+        }
+
+        return FString();
+    }
+
+    bool TryExtractOutputTextDelta(const TSharedPtr<FJsonObject>& StreamObject, FString& OutDelta)
+    {
+        OutDelta.Empty();
+        if (!StreamObject.IsValid())
+        {
+            return false;
+        }
+
+        FString EventType;
+        StreamObject->TryGetStringField(TEXT("type"), EventType);
+        if (EventType.Contains(TEXT("output_text.delta")))
+        {
+            return StreamObject->TryGetStringField(TEXT("delta"), OutDelta) && !OutDelta.IsEmpty();
+        }
+
+        const TSharedPtr<FJsonObject>* DeltaObject = nullptr;
+        if (StreamObject->TryGetObjectField(TEXT("delta"), DeltaObject) && DeltaObject != nullptr && (*DeltaObject).IsValid())
+        {
+            return (*DeltaObject)->TryGetStringField(TEXT("text"), OutDelta) && !OutDelta.IsEmpty();
+        }
+
+        return false;
     }
 }
 
@@ -1032,6 +1116,19 @@ bool FAIGatewayChatController::HandleStreamingLine(const FString& LineText)
         return false;
     }
 
+    FString OutputTextDelta;
+    if (TryExtractOutputTextDelta(ResponseObject, OutputTextDelta))
+    {
+        if (FAIGatewayChatSession* Session = GetActiveSession())
+        {
+            Session->StreamedResponseCache.Append(OutputTextDelta);
+            UpsertLastMessage(TEXT("AI"), Session->StreamedResponseCache);
+            StatusMessage = TEXT("Receiving streamed response...");
+            BroadcastStateChanged();
+        }
+        return true;
+    }
+
     const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
     if (!ResponseObject->TryGetArrayField(TEXT("choices"), Choices) || Choices->Num() == 0)
     {
@@ -1161,10 +1258,12 @@ bool FAIGatewayChatController::ParseChatCompletionPayload(
         return false;
     }
 
+    OutAssistantContent = ExtractAssistantContentFromResponseObject(ResponseObject);
+
     const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
     if (!ResponseObject->TryGetArrayField(TEXT("choices"), Choices) || Choices->Num() == 0)
     {
-        return false;
+        return !OutAssistantContent.IsEmpty();
     }
 
     bOutHadChoices = true;
@@ -1181,7 +1280,11 @@ bool FAIGatewayChatController::ParseChatCompletionPayload(
         return false;
     }
 
-    OutAssistantContent = ExtractAssistantContentFromMessage(*MessageObject);
+    const FString MessageAssistantContent = ExtractAssistantContentFromMessage(*MessageObject);
+    if (!MessageAssistantContent.IsEmpty())
+    {
+        OutAssistantContent = MessageAssistantContent;
+    }
     if (OutAssistantContent.IsEmpty())
     {
         // Compatibility fallback for some OpenAI-like gateways that still return
