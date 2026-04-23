@@ -15,7 +15,10 @@ public:
 
 private:
     void RebuildContent(const FString& InMarkdownText);
+    FString BuildRenderableRichText(const FString& InMarkdownText) const;
 
     FString MarkdownText;
     bool bHasBuiltContent = false;
+    TSharedPtr<class SMultiLineEditableText> RichTextWidget;
+    TSharedPtr<class ITextLayoutMarshaller> RichTextMarshaller;
 };
