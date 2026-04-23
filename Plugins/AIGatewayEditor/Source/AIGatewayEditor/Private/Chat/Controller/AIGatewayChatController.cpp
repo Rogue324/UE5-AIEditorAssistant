@@ -10,6 +10,26 @@ namespace
 {
     const FString DefaultSessionTitle(TEXT("New Chat"));
 
+    FString BuildAgentSystemPrompt()
+    {
+        return TEXT(
+            "You are AI Gateway, a native Unreal Engine editor agent running inside the user's editor.\n"
+            "You can inspect and operate the live UE editor through the provided tools. Treat these tools as your primary source of truth for questions about the current project, level, actors, assets, Blueprints, PIE state, logs, console variables, or editor configuration.\n"
+            "When the user asks about current editor or project state, do not guess from memory. Call the relevant tool first, then answer from the tool result.\n"
+            "Prefer a small number of targeted tool calls. Do not repeatedly call the same tool with the same arguments.\n"
+            "After you have enough information, stop calling tools and give the final answer.\n"
+            "For destructive or state-changing actions, explain the intended action briefly and rely on the editor confirmation flow when approval is required.\n"
+            "Reply in the user's language unless the user asks otherwise.");
+    }
+
+    TSharedPtr<FJsonObject> BuildAgentSystemMessageObject()
+    {
+        TSharedPtr<FJsonObject> MessageObject = MakeShared<FJsonObject>();
+        MessageObject->SetStringField(TEXT("role"), TEXT("system"));
+        MessageObject->SetStringField(TEXT("content"), BuildAgentSystemPrompt());
+        return MessageObject;
+    }
+
     FString SerializeJsonObject(const TSharedPtr<FJsonObject>& Object)
     {
         if (!Object.IsValid())
@@ -816,6 +836,7 @@ bool FAIGatewayChatController::SendChatRequest()
     Request.bStream = true;
     Request.Messages = BuildRequestMessages();
     Request.Tools = BuildToolDefinitions();
+    Request.ToolChoice = Request.Tools.Num() > 0 ? TEXT("auto") : FString();
 
     ResetStreamingState();
     bIsSending = true;
@@ -1377,6 +1398,8 @@ TSharedPtr<FJsonObject> FAIGatewayChatController::BuildToolResultMessageObject(c
 TArray<TSharedPtr<FJsonValue>> FAIGatewayChatController::BuildRequestMessages() const
 {
     TArray<TSharedPtr<FJsonValue>> Messages;
+    Messages.Add(MakeShared<FJsonValueObject>(BuildAgentSystemMessageObject()));
+
     if (const FAIGatewayChatSession* Session = GetActiveSession())
     {
         for (const TSharedPtr<FJsonObject>& Message : Session->RequestMessages)

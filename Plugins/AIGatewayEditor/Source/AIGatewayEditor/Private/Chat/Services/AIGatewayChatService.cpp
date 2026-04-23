@@ -25,6 +25,10 @@ namespace
         if (Request.Tools.Num() > 0)
         {
             RequestBodyObject->SetArrayField(TEXT("tools"), Request.Tools);
+            if (!Request.ToolChoice.IsEmpty())
+            {
+                RequestBodyObject->SetStringField(TEXT("tool_choice"), Request.ToolChoice);
+            }
         }
 
         if (Request.MaxTokens > 0)
