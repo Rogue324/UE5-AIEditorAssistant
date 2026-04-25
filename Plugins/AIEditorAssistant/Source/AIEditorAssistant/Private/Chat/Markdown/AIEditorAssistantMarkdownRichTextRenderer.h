@@ -1,0 +1,15 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Styling/SlateStyle.h"
+
+class FAIEditorAssistantMarkdownRichTextRenderer
+{
+public:
+    static const ISlateStyle& GetStyle();
+    static FString NormalizeForDisplay(const FString& Text);
+    static FString RenderMarkdownToRichText(const FString& MarkdownText, bool bTreatAsParagraph = false);
+    static FString RenderInlineMarkdown(const FString& Text, bool bEnableStyleTags = true);
+    static FString EscapeRichText(const FString& Text);
+    static bool TryExtractHeadingContent(const FString& MarkdownText, FString& OutHeadingContent);
+};

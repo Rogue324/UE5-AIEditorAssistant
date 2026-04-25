@@ -1,14 +1,14 @@
-# AI Gateway Editor for Unreal Engine 5
+# AI Editor Assistant for Unreal Engine 5
 
 [中文说明 / Chinese README](README.zh-CN.md)
 
-AI Gateway Editor is an experimental Unreal Engine 5 editor plugin that brings an OpenAI-compatible chat experience directly into the UE editor and lets the model operate native editor tooling in-process.
+AI Editor Assistant is an experimental Unreal Engine 5 editor plugin that brings an OpenAI-compatible chat experience directly into the UE editor and lets the model operate native editor tooling in-process.
 
 This project now incorporates UE-side code, ideas, and tool taxonomy adapted from the [`soft-ue-cli`](https://github.com/softdaddy-o/soft-ue-cli) repository. In particular, the integrated `SoftUEBridge` and `SoftUEBridgeEditor` modules in this plugin are part of the Unreal-side tooling foundation used to expose editor operations to the model.
 
 Instead of acting as a simple chat window, the plugin turns the editor into an AI-assisted workspace:
 
-- Chat with any OpenAI-compatible `/chat/completions` gateway
+- Chat with any OpenAI-compatible `/chat/completions` endpoint
 - Keep conversation context across turns
 - Stream assistant output live into the editor UI
 - Persist multiple local chat sessions per project
@@ -18,7 +18,7 @@ Instead of acting as a simple chat window, the plugin turns the editor into an A
 
 ## Screenshot
 
-![AI Gateway chat panel](docs/images/aigateway-chat-panel.png)
+![AI Editor Assistant chat panel](docs/images/ai-editor-assistant-chat-panel.png)
 
 The screenshot below shows the in-editor chat panel with multi-session tabs, markdown-rendered assistant output, and the docked composer area inside Unreal Editor.
 
@@ -50,7 +50,7 @@ In the current version, the Python CLI and external MCP server workflow from tha
 
 ### In-Editor Chat Panel
 
-- Dockable `AI Gateway` tab inside Unreal Editor
+- Dockable `AI Editor Assistant` tab inside Unreal Editor
 - Menu entry under `Window`
 - Extra toolbar entry in the Play toolbar area
 - Enter-to-send workflow
@@ -71,8 +71,8 @@ In the current version, the Python CLI and external MCP server workflow from tha
 
 - Sessions are saved per Unreal project
 - Storage location:
-  - `Saved/AIGatewayEditor/Chats/index.json`
-  - `Saved/AIGatewayEditor/Chats/<SessionId>.json`
+  - `Saved/AIEditorAssistant/Chats/index.json`
+  - `Saved/AIEditorAssistant/Chats/<SessionId>.json`
 - Sessions restore automatically after the editor restarts
 - Both UI-visible conversation history and request-context history are persisted
 
@@ -83,7 +83,7 @@ In the current version, the Python CLI and external MCP server workflow from tha
 - Supports standard assistant messages
 - Supports streaming responses
 - Supports OpenAI-style `tools` and `tool_calls`
-- Surfaces clear errors when the gateway response is malformed or tool-calling is unsupported
+- Surfaces clear errors when the service response is malformed or tool-calling is unsupported
 
 ### Native Unreal Tool Calling
 
@@ -124,8 +124,8 @@ The chat transcript is designed for model-style responses rather than plain text
 
 The intended workflow is:
 
-1. Open the `AI Gateway` tab
-2. Configure the gateway in Project Settings
+1. Open the `AI Editor Assistant` tab
+2. Configure the service in Project Settings
 3. Ask the model something about the current Unreal project or editor state
 4. Let the model decide whether it needs native tools
 5. Approve sensitive actions when prompted
@@ -174,7 +174,7 @@ The model sees these tools through the OpenAI function-calling format, while the
 Copy the plugin into your Unreal project:
 
 ```text
-<YourProject>/Plugins/AIGatewayEditor
+<YourProject>/Plugins/AIEditorAssistant
 ```
 
 Then regenerate project files if needed and build the editor target.
@@ -184,7 +184,7 @@ Then regenerate project files if needed and build the editor target.
 This repository already contains the plugin under:
 
 ```text
-Plugins/AIGatewayEditor
+Plugins/AIEditorAssistant
 ```
 
 You can package or copy that plugin into another UE5 project for testing.
@@ -192,8 +192,8 @@ You can package or copy that plugin into another UE5 project for testing.
 ## Requirements
 
 - Unreal Engine 5 editor environment
-- A gateway that exposes an OpenAI-compatible `/chat/completions` endpoint
-- A valid API key for that gateway
+- A service that exposes an OpenAI-compatible `/chat/completions` endpoint
+- A valid API key for that service
 
 The plugin is editor-focused and currently intended for in-editor usage rather than packaged runtime builds.
 
@@ -201,7 +201,7 @@ The plugin is editor-focused and currently intended for in-editor usage rather t
 
 Open:
 
-`Project Settings > Plugins > AI Gateway`
+`Project Settings > Plugins > AI Editor Assistant`
 
 Configure:
 
@@ -215,8 +215,8 @@ These settings are stored in project config and are intentionally kept out of th
 
 You can open the panel from either of these entry points:
 
-- `Window > AI Gateway`
-- The `AI Gateway` button in the Play toolbar area
+- `Window > AI Editor Assistant`
+- The `AI Editor Assistant` button in the Play toolbar area
 
 ## Chat Session Behavior
 
@@ -241,8 +241,8 @@ When the model returns `tool_calls`, the plugin:
 2. Executes them one by one
 3. Requests approval first if a tool is sensitive
 4. Appends each tool result back into the request context as `role=tool`
-5. Sends the updated conversation back to the gateway
-6. Repeats until the gateway returns a final assistant message
+5. Sends the updated conversation back to the service
+6. Repeats until the service returns a final assistant message
 
 This keeps the model in control of the reasoning loop while keeping execution inside Unreal Editor.
 
@@ -252,8 +252,8 @@ The plugin has been refactored so the main panel is no longer a single monolithi
 
 ### Main Editor Modules
 
-- `AIGatewayEditor`
-  - The chat UI, chat controller, session persistence, gateway integration, and tool runtime wrapper
+- `AIEditorAssistant`
+  - The chat UI, chat controller, session persistence, service integration, and tool runtime wrapper
 - `SoftUEBridge`
   - Unreal-facing bridge functionality used to expose editor operations, derived from the integrated `soft-ue-cli` UE-side bridge work
 - `SoftUEBridgeEditor`
@@ -261,7 +261,7 @@ The plugin has been refactored so the main panel is no longer a single monolithi
 
 ### Chat System Structure
 
-Inside `AIGatewayEditor`, the chat implementation is split into dedicated layers:
+Inside `AIEditorAssistant`, the chat implementation is split into dedicated layers:
 
 - `Chat/Model`
   - Shared types for messages, sessions, view state, and tool-call state
@@ -278,16 +278,16 @@ Inside `AIGatewayEditor`, the chat implementation is split into dedicated layers
 
 Two internal interfaces are treated as the main long-term extension points:
 
-- `IAIGatewayChatSessionStore`
-- `IAIGatewayChatService`
+- `IAIEditorAssistantChatSessionStore`
+- `IAIEditorAssistantChatService`
 
-This makes it easier to change storage or gateway backends later without rewriting the panel UI.
+This makes it easier to change storage or service backends later without rewriting the panel UI.
 
 ## Current Limitations
 
 - The plugin is still experimental
 - It is primarily intended for editor workflows
-- Gateway compatibility depends on OpenAI-style chat-completions behavior
+- Provider compatibility depends on OpenAI-style chat-completions behavior
 - Best results require a model that actually supports `tools` / `tool_calls`
 - UI and markdown rendering are still evolving
 
@@ -295,19 +295,19 @@ This makes it easier to change storage or gateway backends later without rewriti
 
 Key paths:
 
-- `Plugins/AIGatewayEditor`
-- `Plugins/AIGatewayEditor/Source/AIGatewayEditor`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridge`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridgeEditor`
+- `Plugins/AIEditorAssistant`
+- `Plugins/AIEditorAssistant/Source/AIEditorAssistant`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridge`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridgeEditor`
 
 If you are looking for the code integrated from `soft-ue-cli`, the most relevant areas are:
 
-- `Plugins/AIGatewayEditor/Source/SoftUEBridge`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridgeEditor`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridge`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridgeEditor`
 
 ## Why This Plugin Exists
 
-The goal of AI Gateway Editor is to make Unreal Editor directly operable by a model from inside the editor itself, instead of limiting the experience to external chat windows or requiring a separate orchestration process for the common workflow.
+The goal of AI Editor Assistant is to make Unreal Editor directly operable by a model from inside the editor itself, instead of limiting the experience to external chat windows or requiring a separate orchestration process for the common workflow.
 
 In short:
 

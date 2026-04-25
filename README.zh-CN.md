@@ -1,14 +1,14 @@
-# AI Gateway Editor for Unreal Engine 5
+# AI Editor Assistant for Unreal Engine 5
 
 [English README](README.md)
 
-AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把 OpenAI 兼容的聊天体验直接带进 UE 编辑器内部，并让大模型可以在进程内调用原生 Unreal 编辑器工具。
+AI Editor Assistant 是一个实验性的 Unreal Engine 5 编辑器插件，它把 OpenAI 兼容的聊天体验直接带进 UE 编辑器内部，并让大模型可以在进程内调用原生 Unreal 编辑器工具。
 
 这个项目现在已经整合了来自 [`soft-ue-cli`](https://github.com/softdaddy-o/soft-ue-cli) 仓库中的 UE 侧代码、设计思路和工具体系。特别是本插件中的 `SoftUEBridge` 和 `SoftUEBridgeEditor` 模块，已经作为向模型暴露编辑器操作能力的重要 Unreal 侧基础设施被集成进来。
 
 它不再只是一个简单的聊天窗口，而是把编辑器变成了一个 AI 辅助工作台：
 
-- 可以连接任意 OpenAI 兼容的 `/chat/completions` 网关
+- 可以连接任意 OpenAI 兼容的 `/chat/completions` 端点
 - 在多轮对话中保留上下文
 - 在编辑器 UI 中流式显示模型输出
 - 按项目本地持久化多个聊天会话
@@ -18,7 +18,7 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 
 ## 界面截图
 
-![AI Gateway 聊天面板](docs/images/aigateway-chat-panel.png)
+![AI Editor Assistant 聊天面板](docs/images/ai-editor-assistant-chat-panel.png)
 
 下图展示了插件在 Unreal Editor 内的聊天面板界面，包括多会话页签、支持 Markdown 的助手消息卡片，以及停靠在编辑器中的输入区域。
 
@@ -50,7 +50,7 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 
 ### 编辑器内聊天面板
 
-- 可停靠的 `AI Gateway` 标签页
+- 可停靠的 `AI Editor Assistant` 标签页
 - `Window` 菜单中的入口
 - Play 工具栏区域里的额外入口按钮
 - 支持 Enter 直接发送
@@ -71,8 +71,8 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 
 - 会话按 Unreal 项目本地保存
 - 存储位置：
-  - `Saved/AIGatewayEditor/Chats/index.json`
-  - `Saved/AIGatewayEditor/Chats/<SessionId>.json`
+  - `Saved/AIEditorAssistant/Chats/index.json`
+  - `Saved/AIEditorAssistant/Chats/<SessionId>.json`
 - 编辑器重启后自动恢复
 - 同时持久化 UI 可见的聊天记录和模型请求上下文
 
@@ -83,7 +83,7 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 - 支持标准 assistant 回复
 - 支持流式响应
 - 支持 OpenAI 风格的 `tools` 与 `tool_calls`
-- 当网关响应格式错误或不支持工具调用时，会在面板中给出明确错误提示
+- 当服务响应格式错误或不支持工具调用时，会在面板中给出明确错误提示
 
 ### 原生 Unreal 工具调用
 
@@ -124,8 +124,8 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 
 推荐工作流如下：
 
-1. 打开 `AI Gateway` 标签页
-2. 在 Project Settings 中配置网关
+1. 打开 `AI Editor Assistant` 标签页
+2. 在 Project Settings 中配置服务
 3. 让模型分析当前 Unreal 项目或编辑器状态
 4. 由模型自行决定是否要调用原生工具
 5. 在需要时审批敏感操作
@@ -174,7 +174,7 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 把插件复制到你的 Unreal 项目目录中：
 
 ```text
-<YourProject>/Plugins/AIGatewayEditor
+<YourProject>/Plugins/AIEditorAssistant
 ```
 
 然后按需重新生成工程文件并编译编辑器目标。
@@ -184,7 +184,7 @@ AI Gateway Editor 是一个实验性的 Unreal Engine 5 编辑器插件，它把
 当前仓库已经包含插件目录：
 
 ```text
-Plugins/AIGatewayEditor
+Plugins/AIEditorAssistant
 ```
 
 你可以直接从这里打包或复制这个插件到其他 UE5 项目中测试。
@@ -192,8 +192,8 @@ Plugins/AIGatewayEditor
 ## 依赖要求
 
 - Unreal Engine 5 编辑器环境
-- 一个提供 OpenAI 兼容 `/chat/completions` 接口的网关
-- 对应网关可用的 API Key
+- 一个提供 OpenAI 兼容 `/chat/completions` 接口的服务
+- 对应服务可用的 API Key
 
 这个插件当前主要面向编辑器内工作流，而不是打包后的运行时环境。
 
@@ -201,7 +201,7 @@ Plugins/AIGatewayEditor
 
 打开：
 
-`Project Settings > Plugins > AI Gateway`
+`Project Settings > Plugins > AI Editor Assistant`
 
 配置以下项目：
 
@@ -215,8 +215,8 @@ Plugins/AIGatewayEditor
 
 可以通过以下两个入口打开：
 
-- `Window > AI Gateway`
-- Play 工具栏区域里的 `AI Gateway` 按钮
+- `Window > AI Editor Assistant`
+- Play 工具栏区域里的 `AI Editor Assistant` 按钮
 
 ## 聊天会话行为
 
@@ -241,8 +241,8 @@ Plugins/AIGatewayEditor
 2. 按顺序逐个执行
 3. 如果是敏感工具，先请求用户审批
 4. 把每个工具结果作为 `role=tool` 追加回请求上下文
-5. 再次把更新后的上下文发给网关
-6. 重复直到网关返回最终 assistant 回复
+5. 再次把更新后的上下文发给服务
+6. 重复直到服务返回最终 assistant 回复
 
 这样可以让模型保持决策循环，而实际执行仍然发生在 Unreal Editor 内部。
 
@@ -252,8 +252,8 @@ Plugins/AIGatewayEditor
 
 ### 主要编辑器模块
 
-- `AIGatewayEditor`
-  - 聊天 UI、聊天控制器、会话持久化、网关集成，以及工具运行时包装层
+- `AIEditorAssistant`
+  - 聊天 UI、聊天控制器、会话持久化、服务集成，以及工具运行时包装层
 - `SoftUEBridge`
   - 用于暴露编辑器操作的 Unreal bridge 层，来源于已集成的 `soft-ue-cli` UE 侧 bridge 思路与代码
 - `SoftUEBridgeEditor`
@@ -261,7 +261,7 @@ Plugins/AIGatewayEditor
 
 ### Chat 系统结构
 
-在 `AIGatewayEditor` 内部，聊天系统按职责拆成了几层：
+在 `AIEditorAssistant` 内部，聊天系统按职责拆成了几层：
 
 - `Chat/Model`
   - 消息、会话、视图状态、工具调用状态等共享类型
@@ -278,16 +278,16 @@ Plugins/AIGatewayEditor
 
 目前有两个内部接口被当作后续演进的正式扩展点：
 
-- `IAIGatewayChatSessionStore`
-- `IAIGatewayChatService`
+- `IAIEditorAssistantChatSessionStore`
+- `IAIEditorAssistantChatService`
 
-这样后续如果要更换存储层或网关接入层，就不需要重写整个面板 UI。
+这样后续如果要更换存储层或服务接入层，就不需要重写整个面板 UI。
 
 ## 当前限制
 
 - 插件仍然处于实验阶段
 - 主要面向编辑器工作流
-- 网关兼容性依赖于 OpenAI 风格的 chat completions 行为
+- 服务兼容性依赖于 OpenAI 风格的 chat completions 行为
 - 最好搭配真正支持 `tools` / `tool_calls` 的模型使用
 - UI 和 markdown 渲染仍在持续迭代
 
@@ -295,19 +295,19 @@ Plugins/AIGatewayEditor
 
 关键路径包括：
 
-- `Plugins/AIGatewayEditor`
-- `Plugins/AIGatewayEditor/Source/AIGatewayEditor`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridge`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridgeEditor`
+- `Plugins/AIEditorAssistant`
+- `Plugins/AIEditorAssistant/Source/AIEditorAssistant`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridge`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridgeEditor`
 
 如果你想看整合自 `soft-ue-cli` 的主要代码，最相关的目录是：
 
-- `Plugins/AIGatewayEditor/Source/SoftUEBridge`
-- `Plugins/AIGatewayEditor/Source/SoftUEBridgeEditor`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridge`
+- `Plugins/AIEditorAssistant/Source/SoftUEBridgeEditor`
 
 ## 这个插件的目标
 
-AI Gateway Editor 的目标，是让 Unreal Editor 本身成为模型直接操作的工作现场，而不是把体验限制在编辑器外部的聊天窗口里，也不是在常见工作流中强依赖单独的外部编排进程。
+AI Editor Assistant 的目标，是让 Unreal Editor 本身成为模型直接操作的工作现场，而不是把体验限制在编辑器外部的聊天窗口里，也不是在常见工作流中强依赖单独的外部编排进程。
 
 简单来说：
 
