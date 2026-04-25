@@ -1,4 +1,4 @@
-# <img src="Plugins/AIEditorAssistant/Resources/Icon40.png" alt="AI Editor Assistant Icon" width="22" /> AI Editor Assistant for Unreal Engine 5
+# <img src="Plugins/AIEditorAssistant/Resources/Icon40.png" alt="AI Editor Assistant Icon" width="36" /> AI Editor Assistant for Unreal Engine 5
 
 [中文说明 / Chinese README](README.zh-CN.md)
 
@@ -18,7 +18,7 @@ Instead of acting as a simple chat window, the plugin turns the editor into an A
 
 ## Screenshot
 
-![AI Editor Assistant chat panel](docs/images/info.png)
+![AI Editor Assistant chat panel](docs/images/info-desktop.png)
 
 The screenshot below shows the in-editor chat panel with multi-session tabs, markdown-rendered assistant output, and the docked composer area inside Unreal Editor.
 
