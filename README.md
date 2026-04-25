@@ -18,7 +18,7 @@ Instead of acting as a simple chat window, the plugin turns the editor into an A
 
 ## Screenshot
 
-![AI Editor Assistant chat panel](docs/images/ai-editor-assistant-chat-panel.png)
+![AI Editor Assistant chat panel](docs/images/info.png)
 
 The screenshot below shows the in-editor chat panel with multi-session tabs, markdown-rendered assistant output, and the docked composer area inside Unreal Editor.
 

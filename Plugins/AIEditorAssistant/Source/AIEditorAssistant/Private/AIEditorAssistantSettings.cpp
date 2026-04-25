@@ -7,7 +7,7 @@ UAIEditorAssistantSettings::UAIEditorAssistantSettings()
     Provider = EAIEditorAssistantAPIProvider::OpenAICompatible;
     Model = TEXT("gpt-4o-mini");
     ReasoningIntensity = EAIEditorAssistantReasoningIntensity::Medium;
-    MaxToolRounds = 8;
+    MaxToolRounds = 500;
     bShowToolActivityInChat = false;
 }
 

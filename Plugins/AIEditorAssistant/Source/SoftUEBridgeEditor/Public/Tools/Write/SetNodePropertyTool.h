@@ -21,5 +21,5 @@ public:
 		const FBridgeToolContext& Context) override;
 
 private:
-	TArray<FString> ApplyProperties(UObject* Node, const TSharedPtr<FJsonObject>& Properties);
+	TArray<FString> ApplyProperties(UObject* Node, const TSharedPtr<FJsonObject>& Properties, bool& bOutAppliedAny);
 };

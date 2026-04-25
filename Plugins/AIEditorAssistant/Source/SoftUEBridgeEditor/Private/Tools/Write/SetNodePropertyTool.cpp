@@ -7,6 +7,7 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "K2Node_MathExpression.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "ScopedTransaction.h"
 
@@ -93,6 +94,11 @@ FBridgeToolResult USetNodePropertyTool::Execute(
 		return FBridgeToolResult::Error(FString::Printf(TEXT("Node not found: %s"), *NodeGuidStr));
 	}
 
+	if (Cast<UK2Node_MathExpression>(Node))
+	{
+		return FBridgeToolResult::Error(TEXT("set-node-property does not support K2Node_MathExpression. Please recreate the node with the target expression text."));
+	}
+
 	UE_LOG(LogSoftUEBridgeEditor, Log, TEXT("set-node-property: %s on node %s"), *AssetPath, *NodeGuidStr);
 
 	// Begin transaction
@@ -103,7 +109,26 @@ FBridgeToolResult USetNodePropertyTool::Execute(
 	FBridgeAssetModifier::MarkModified(Blueprint);
 
 	// Apply properties
-	TArray<FString> Errors = ApplyProperties(Node, Properties);
+	bool bAppliedAny = false;
+	TArray<FString> Errors = ApplyProperties(Node, Properties, bAppliedAny);
+	if (!bAppliedAny)
+	{
+		return FBridgeToolResult::Error(FString::Printf(
+			TEXT("No matching properties were applied for node '%s'."),
+			*NodeGuidStr));
+	}
+
+	UEdGraph* OwningGraph = Node->GetGraph();
+	if (!OwningGraph)
+	{
+		return FBridgeToolResult::Error(TEXT("Target node has no owning graph; cannot apply node reconstruction safely."));
+	}
+
+	UBlueprint* GraphBlueprint = FBlueprintEditorUtils::FindBlueprintForGraph(OwningGraph);
+	if (!GraphBlueprint)
+	{
+		return FBridgeToolResult::Error(TEXT("Target node graph is not associated with a Blueprint; cannot apply node reconstruction safely."));
+	}
 
 	// Reconstruct node to reflect property changes in pins
 	Node->ReconstructNode();
@@ -128,9 +153,10 @@ FBridgeToolResult USetNodePropertyTool::Execute(
 	return FBridgeToolResult::Json(Result);
 }
 
-TArray<FString> USetNodePropertyTool::ApplyProperties(UObject* Node, const TSharedPtr<FJsonObject>& Properties)
+TArray<FString> USetNodePropertyTool::ApplyProperties(UObject* Node, const TSharedPtr<FJsonObject>& Properties, bool& bOutAppliedAny)
 {
 	TArray<FString> Errors;
+	bOutAppliedAny = false;
 	if (!Node || !Properties.IsValid())
 	{
 		return Errors;
@@ -185,6 +211,10 @@ TArray<FString> USetNodePropertyTool::ApplyProperties(UObject* Node, const TShar
 			UE_LOG(LogSoftUEBridgeEditor, Warning, TEXT("%s"), *Msg);
 			Errors.Add(Msg);
 		}
+		else
+		{
+			bOutAppliedAny = true;
+		}
 	}
 
 	// Pin default fallback for unresolved properties.
@@ -226,6 +256,7 @@ TArray<FString> USetNodePropertyTool::ApplyProperties(UObject* Node, const TShar
 
 						Pin->DefaultValue = StringValue;
 						ResolvedByPin.Add(PropName);
+						bOutAppliedAny = true;
 						UE_LOG(LogSoftUEBridgeEditor, Log, TEXT("Set pin default %s = %s"), *PropName, *StringValue);
 					}
 					break;

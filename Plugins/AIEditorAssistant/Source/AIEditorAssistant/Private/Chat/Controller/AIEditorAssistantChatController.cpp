@@ -169,6 +169,155 @@ namespace
         return SanitizedObject;
     }
 
+    TArray<TSharedPtr<FJsonObject>> BuildConsistentRequestHistory(const TArray<TSharedPtr<FJsonObject>>& RequestMessages)
+    {
+        TArray<TSharedPtr<FJsonObject>> OutputMessages;
+
+        int32 PendingAssistantIndex = INDEX_NONE;
+        TSet<FString> PendingToolCallIds;
+        TArray<int32> PendingToolMessageIndices;
+
+        auto ResetPendingState =
+            [&PendingAssistantIndex, &PendingToolCallIds, &PendingToolMessageIndices]()
+        {
+            PendingAssistantIndex = INDEX_NONE;
+            PendingToolCallIds.Reset();
+            PendingToolMessageIndices.Reset();
+        };
+
+        auto DropIncompletePendingBlock =
+            [&OutputMessages, &PendingAssistantIndex, &PendingToolCallIds, &PendingToolMessageIndices, &ResetPendingState]()
+        {
+            if (PendingAssistantIndex != INDEX_NONE && PendingToolCallIds.Num() > 0)
+            {
+                if (OutputMessages.IsValidIndex(PendingAssistantIndex) && OutputMessages[PendingAssistantIndex].IsValid())
+                {
+                    // Keep assistant text, but strip dangling tool call requests that do not
+                    // have complete tool responses (common after interrupted sessions/restarts).
+                    OutputMessages[PendingAssistantIndex]->RemoveField(TEXT("tool_calls"));
+                }
+
+                PendingToolMessageIndices.Sort([](const int32 A, const int32 B)
+                {
+                    return A > B;
+                });
+
+                for (const int32 MessageIndex : PendingToolMessageIndices)
+                {
+                    if (OutputMessages.IsValidIndex(MessageIndex))
+                    {
+                        OutputMessages.RemoveAt(MessageIndex);
+                    }
+                }
+            }
+
+            ResetPendingState();
+        };
+
+        auto BeginPendingToolBlock =
+            [&OutputMessages, &PendingAssistantIndex, &PendingToolCallIds, &PendingToolMessageIndices](const TSharedPtr<FJsonObject>& AssistantMessage)
+        {
+            PendingAssistantIndex = OutputMessages.Add(AssistantMessage);
+            PendingToolCallIds.Reset();
+            PendingToolMessageIndices.Reset();
+
+            const TArray<TSharedPtr<FJsonValue>>* ToolCalls = nullptr;
+            if (!AssistantMessage->TryGetArrayField(TEXT("tool_calls"), ToolCalls) || ToolCalls == nullptr)
+            {
+                return;
+            }
+
+            for (const TSharedPtr<FJsonValue>& ToolCallValue : *ToolCalls)
+            {
+                const TSharedPtr<FJsonObject>* ToolCallObject = nullptr;
+                if (!ToolCallValue.IsValid() || !ToolCallValue->TryGetObject(ToolCallObject) || ToolCallObject == nullptr || !(*ToolCallObject).IsValid())
+                {
+                    continue;
+                }
+
+                FString ToolCallId;
+                if ((*ToolCallObject)->TryGetStringField(TEXT("id"), ToolCallId))
+                {
+                    ToolCallId = ToolCallId.TrimStartAndEnd();
+                    if (!ToolCallId.IsEmpty())
+                    {
+                        PendingToolCallIds.Add(ToolCallId);
+                    }
+                }
+            }
+        };
+
+        for (const TSharedPtr<FJsonObject>& RequestMessage : RequestMessages)
+        {
+            TSharedPtr<FJsonObject> SanitizedMessage = SanitizeRequestMessageObject(RequestMessage);
+            if (!SanitizedMessage.IsValid())
+            {
+                continue;
+            }
+
+            FString Role;
+            SanitizedMessage->TryGetStringField(TEXT("role"), Role);
+            const bool bIsToolMessage = Role.Equals(TEXT("tool"), ESearchCase::IgnoreCase);
+
+            if (PendingAssistantIndex != INDEX_NONE)
+            {
+                if (bIsToolMessage)
+                {
+                    FString ToolCallId;
+                    SanitizedMessage->TryGetStringField(TEXT("tool_call_id"), ToolCallId);
+                    ToolCallId = ToolCallId.TrimStartAndEnd();
+
+                    if (!ToolCallId.IsEmpty() && PendingToolCallIds.Contains(ToolCallId))
+                    {
+                        const int32 ToolMessageIndex = OutputMessages.Add(SanitizedMessage);
+                        PendingToolMessageIndices.Add(ToolMessageIndex);
+                        PendingToolCallIds.Remove(ToolCallId);
+                    }
+
+                    continue;
+                }
+
+                if (PendingToolCallIds.Num() > 0)
+                {
+                    DropIncompletePendingBlock();
+                }
+                else
+                {
+                    ResetPendingState();
+                }
+            }
+
+            const bool bHasToolCalls = SanitizedMessage->HasTypedField<EJson::Array>(TEXT("tool_calls"));
+            if (Role.Equals(TEXT("assistant"), ESearchCase::IgnoreCase) && bHasToolCalls)
+            {
+                BeginPendingToolBlock(SanitizedMessage);
+                continue;
+            }
+
+            if (bIsToolMessage)
+            {
+                // Ignore orphan tool messages not attached to an active assistant tool-call block.
+                continue;
+            }
+
+            OutputMessages.Add(SanitizedMessage);
+        }
+
+        if (PendingAssistantIndex != INDEX_NONE)
+        {
+            if (PendingToolCallIds.Num() > 0)
+            {
+                DropIncompletePendingBlock();
+            }
+            else
+            {
+                ResetPendingState();
+            }
+        }
+
+        return OutputMessages;
+    }
+
     FString TruncateWithEllipsis(const FString& InText, const int32 MaxLength)
     {
         FString Text = InText.TrimStartAndEnd();
@@ -1272,7 +1421,7 @@ FString FAIEditorAssistantChatController::BuildContextSummary(const FAIEditorAss
         : FString();
 
     return FString::Printf(
-        TEXT("Context: %d request message(s) | %d chars | ~%d token(s)%s | Plugin limit: none (actual limit is enforced by the selected model/provider)."),
+            TEXT("Context: %d request message(s) | %d chars | ~%d token(s)%s"),
         Session.RequestMessages.Num(),
         SerializedCharacterCount,
         ApproxTokenCount,
@@ -2287,16 +2436,10 @@ TArray<TSharedPtr<FJsonValue>> FAIEditorAssistantChatController::BuildRequestMes
 
     if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
     {
-        for (const TSharedPtr<FJsonObject>& Message : Session->RequestMessages)
+        const TArray<TSharedPtr<FJsonObject>> ConsistentHistory = BuildConsistentRequestHistory(Session->RequestMessages);
+        for (const TSharedPtr<FJsonObject>& Message : ConsistentHistory)
         {
-            if (Message.IsValid())
-            {
-                TSharedPtr<FJsonObject> SanitizedMessage = SanitizeRequestMessageObject(Message);
-                if (SanitizedMessage.IsValid())
-                {
-                    Messages.Add(MakeShared<FJsonValueObject>(SanitizedMessage));
-                }
-            }
+            Messages.Add(MakeShared<FJsonValueObject>(Message));
         }
     }
     return Messages;
