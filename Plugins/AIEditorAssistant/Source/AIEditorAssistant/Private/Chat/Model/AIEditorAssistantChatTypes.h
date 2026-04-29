@@ -24,6 +24,12 @@ struct FAIEditorAssistantStreamingToolCall
     FString ArgumentsJson;
 };
 
+struct FAIEditorAssistantAgentRoleViewData
+{
+    FString RoleId;
+    FString DisplayName;
+};
+
 struct FAIEditorAssistantChatSession
 {
     FString SessionId;
@@ -32,7 +38,7 @@ struct FAIEditorAssistantChatSession
     FDateTime CreatedAt;
     FDateTime UpdatedAt;
     FString DraftPrompt;
-    TArray<FString> PendingImagePaths;
+    FString AgentRoleId;
     TArray<FAIEditorAssistantChatMessage> ConversationMessages;
     TArray<TSharedPtr<FJsonObject>> RequestMessages;
 
@@ -74,8 +80,6 @@ struct FAIEditorAssistantChatPanelViewState
     TArray<FAIEditorAssistantChatMessage> VisibleMessages;
     FAIEditorAssistantToolConfirmationViewData ToolConfirmation;
     FString ContextSummary;
-    FString PendingAttachmentSummary;
-    TArray<FString> PendingAttachmentPaths;
     FString DraftPrompt;
     FString Model;
     TArray<FString> ModelOptions;
@@ -83,6 +87,9 @@ struct FAIEditorAssistantChatPanelViewState
     FString ReasoningMode;
     TArray<FString> ReasoningModeOptions;
     FString ReasoningOptionsStatus;
+    TArray<FAIEditorAssistantAgentRoleViewData> AgentRoles;
+    FString ActiveAgentRoleId;
+    FString ActiveAgentRoleDisplayName;
     FString StatusMessage;
     FString SendButtonText;
     bool bCanSend = false;

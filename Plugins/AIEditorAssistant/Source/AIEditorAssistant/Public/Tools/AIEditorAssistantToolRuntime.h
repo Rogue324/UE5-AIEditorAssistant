@@ -40,6 +40,7 @@ public:
     void Shutdown();
 
     const TArray<FAIEditorAssistantToolDefinition>& GetToolDefinitions() const;
+    const TArray<FAIEditorAssistantToolDefinition>& GetToolDefinitionsForRole(const FString& RoleId) const;
     const FAIEditorAssistantToolDefinition* FindDefinition(const FString& ToolName) const;
     FAIEditorAssistantToolResult ExecuteTool(const FString& ToolName, const TSharedPtr<FJsonObject>& Arguments) const;
 
@@ -48,5 +49,6 @@ private:
 
     TArray<FAIEditorAssistantToolDefinition> Definitions;
     TMap<FString, int32> DefinitionIndexByName;
+    mutable TMap<FString, TArray<FAIEditorAssistantToolDefinition>> RoleDefinitionsCache;
     bool bStarted = false;
 };

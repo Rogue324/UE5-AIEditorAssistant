@@ -95,27 +95,7 @@ bool FAIEditorAssistantFileChatSessionStore::LoadSession(const FString& SessionI
     SessionObject->TryGetStringField(TEXT("title"), OutSession.Title);
     SessionObject->TryGetBoolField(TEXT("has_generated_title"), OutSession.bHasGeneratedTitle);
     SessionObject->TryGetStringField(TEXT("draft_prompt"), OutSession.DraftPrompt);
-
-    const TArray<TSharedPtr<FJsonValue>>* PendingImagePathValues = nullptr;
-    if (SessionObject->TryGetArrayField(TEXT("pending_image_paths"), PendingImagePathValues) && PendingImagePathValues != nullptr)
-    {
-        for (const TSharedPtr<FJsonValue>& Value : *PendingImagePathValues)
-        {
-            FString PendingImagePath;
-            if (Value.IsValid() && Value->TryGetString(PendingImagePath) && !PendingImagePath.IsEmpty())
-            {
-                OutSession.PendingImagePaths.Add(PendingImagePath);
-            }
-        }
-    }
-    else
-    {
-        FString LegacyPendingImagePath;
-        if (SessionObject->TryGetStringField(TEXT("pending_image_path"), LegacyPendingImagePath) && !LegacyPendingImagePath.IsEmpty())
-        {
-            OutSession.PendingImagePaths.Add(LegacyPendingImagePath);
-        }
-    }
+    SessionObject->TryGetStringField(TEXT("agent_role_id"), OutSession.AgentRoleId);
 
     if (OutSession.SessionId.IsEmpty())
     {
@@ -189,16 +169,7 @@ bool FAIEditorAssistantFileChatSessionStore::SaveSession(const FAIEditorAssistan
     SessionObject->SetStringField(TEXT("created_at"), Session.CreatedAt.ToIso8601());
     SessionObject->SetStringField(TEXT("updated_at"), Session.UpdatedAt.ToIso8601());
     SessionObject->SetStringField(TEXT("draft_prompt"), Session.DraftPrompt);
-
-    TArray<TSharedPtr<FJsonValue>> PendingImagePathValues;
-    for (const FString& PendingImagePath : Session.PendingImagePaths)
-    {
-        if (!PendingImagePath.IsEmpty())
-        {
-            PendingImagePathValues.Add(MakeShared<FJsonValueString>(PendingImagePath));
-        }
-    }
-    SessionObject->SetArrayField(TEXT("pending_image_paths"), PendingImagePathValues);
+    SessionObject->SetStringField(TEXT("agent_role_id"), Session.AgentRoleId);
 
     TArray<TSharedPtr<FJsonValue>> ConversationValues;
     for (const FAIEditorAssistantChatMessage& Message : Session.ConversationMessages)

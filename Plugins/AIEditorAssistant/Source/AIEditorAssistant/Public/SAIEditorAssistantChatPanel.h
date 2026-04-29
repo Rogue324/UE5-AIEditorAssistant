@@ -16,6 +16,9 @@ public:
 
 private:
     void RefreshFromController();
+    void HandleAgentRoleSelectionChanged(TSharedPtr<FString> InSelectedItem, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateAgentRoleOptionWidget(TSharedPtr<FString> InItem) const;
+    FText GetSelectedAgentRoleText() const;
     void HandleModelSelectionChanged(TSharedPtr<FString> InSelectedItem, ESelectInfo::Type SelectInfo);
     TSharedRef<SWidget> GenerateModelOptionWidget(TSharedPtr<FString> InItem) const;
     FText GetSelectedModelText() const;
@@ -24,6 +27,9 @@ private:
     FText GetSelectedReasoningText() const;
 
     TSharedPtr<class FAIEditorAssistantChatController> ChatController;
+    TArray<TSharedPtr<FString>> AgentRoleOptions;
+    TSharedPtr<SComboBox<TSharedPtr<FString>>> AgentRoleComboBox;
+    TSharedPtr<FString> SelectedAgentRoleOption;
     TArray<TSharedPtr<FString>> ModelOptions;
     TSharedPtr<SComboBox<TSharedPtr<FString>>> ModelComboBox;
     TSharedPtr<FString> SelectedModelOption;

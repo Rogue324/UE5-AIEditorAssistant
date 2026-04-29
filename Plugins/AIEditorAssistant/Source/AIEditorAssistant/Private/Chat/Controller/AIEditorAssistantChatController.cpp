@@ -2,12 +2,7 @@
 
 #include "AIEditorAssistantSettings.h"
 #include "Chat/Markdown/AIEditorAssistantMarkdownParser.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
-#include "Misc/Base64.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Modules/ModuleManager.h"
+#include "Chat/Model/AIEditorAssistantAgentRole.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Tools/AIEditorAssistantToolRuntime.h"
@@ -17,13 +12,15 @@ namespace
     const FString DefaultSessionTitle(TEXT("New Chat"));
     const FString OpenAIOfficialBaseUrl(TEXT("https://api.openai.com/v1"));
     const FString DeepSeekOfficialBaseUrl(TEXT("https://api.deepseek.com"));
-    constexpr int32 MaxInlineImageLongEdge = 1568;
-    constexpr int32 MaxPreferredPngBytes = 1536 * 1024;
-    constexpr int32 PhotoJpegQuality = 82;
-    constexpr int32 ScreenshotFallbackJpegQuality = 90;
 
-    FString BuildAgentSystemPrompt()
+    FString BuildAgentSystemPrompt(const FString& AgentRoleId = FString())
     {
+        const FAIEditorAssistantAgentRoleDefinition* Role = FindAgentRole(AgentRoleId);
+        if (Role != nullptr && !Role->SystemPrompt.IsEmpty())
+        {
+            return Role->SystemPrompt;
+        }
+
         return TEXT(
             "You are AI Editor Assistant, a native Unreal Engine editor agent running inside the user's editor.\n"
             "You can inspect and operate the live UE editor through the provided tools. Treat these tools as your primary source of truth for questions about the current project, level, actors, assets, Blueprints, PIE state, logs, console variables, or editor configuration.\n"
@@ -46,11 +43,11 @@ namespace
             "Reply in the user's language unless the user asks otherwise.");
     }
 
-    TSharedPtr<FJsonObject> BuildAgentSystemMessageObject()
+    TSharedPtr<FJsonObject> BuildAgentSystemMessageObject(const FString& AgentRoleId = FString())
     {
         TSharedPtr<FJsonObject> MessageObject = MakeShared<FJsonObject>();
         MessageObject->SetStringField(TEXT("role"), TEXT("system"));
-        MessageObject->SetStringField(TEXT("content"), BuildAgentSystemPrompt());
+        MessageObject->SetStringField(TEXT("content"), BuildAgentSystemPrompt(AgentRoleId));
         return MessageObject;
     }
 
@@ -677,291 +674,6 @@ namespace
         return false;
     }
 
-    FString GetImageMimeType(const FString& ImagePath)
-    {
-        const FString Extension = FPaths::GetExtension(ImagePath, false).ToLower();
-        if (Extension == TEXT("png"))
-        {
-            return TEXT("image/png");
-        }
-
-        if (Extension == TEXT("jpg") || Extension == TEXT("jpeg"))
-        {
-            return TEXT("image/jpeg");
-        }
-
-        if (Extension == TEXT("webp"))
-        {
-            return TEXT("image/webp");
-        }
-
-        if (Extension == TEXT("gif"))
-        {
-            return TEXT("image/gif");
-        }
-
-        if (Extension == TEXT("bmp"))
-        {
-            return TEXT("image/bmp");
-        }
-
-        return FString();
-    }
-
-    FString GetMimeTypeFromImageFormat(const EImageFormat ImageFormat)
-    {
-        if (ImageFormat == EImageFormat::PNG)
-        {
-            return TEXT("image/png");
-        }
-
-        if (ImageFormat == EImageFormat::JPEG)
-        {
-            return TEXT("image/jpeg");
-        }
-
-        return FString();
-    }
-
-    bool ResizeImageBilinear(
-        const TArray<FColor>& SourcePixels,
-        const int32 SourceWidth,
-        const int32 SourceHeight,
-        const int32 TargetWidth,
-        const int32 TargetHeight,
-        TArray<FColor>& OutPixels)
-    {
-        OutPixels.Reset();
-
-        if (SourceWidth <= 0 || SourceHeight <= 0 || TargetWidth <= 0 || TargetHeight <= 0)
-        {
-            return false;
-        }
-
-        if (SourcePixels.Num() != SourceWidth * SourceHeight)
-        {
-            return false;
-        }
-
-        if (SourceWidth == TargetWidth && SourceHeight == TargetHeight)
-        {
-            OutPixels = SourcePixels;
-            return true;
-        }
-
-        OutPixels.SetNumUninitialized(TargetWidth * TargetHeight);
-
-        for (int32 Y = 0; Y < TargetHeight; ++Y)
-        {
-            const float SourceY = ((static_cast<float>(Y) + 0.5f) * static_cast<float>(SourceHeight) / static_cast<float>(TargetHeight)) - 0.5f;
-            const int32 Y0 = FMath::Clamp(FMath::FloorToInt(SourceY), 0, SourceHeight - 1);
-            const int32 Y1 = FMath::Clamp(Y0 + 1, 0, SourceHeight - 1);
-            const float YAlpha = FMath::Clamp(SourceY - static_cast<float>(Y0), 0.0f, 1.0f);
-
-            for (int32 X = 0; X < TargetWidth; ++X)
-            {
-                const float SourceX = ((static_cast<float>(X) + 0.5f) * static_cast<float>(SourceWidth) / static_cast<float>(TargetWidth)) - 0.5f;
-                const int32 X0 = FMath::Clamp(FMath::FloorToInt(SourceX), 0, SourceWidth - 1);
-                const int32 X1 = FMath::Clamp(X0 + 1, 0, SourceWidth - 1);
-                const float XAlpha = FMath::Clamp(SourceX - static_cast<float>(X0), 0.0f, 1.0f);
-
-                const FColor& TopLeft = SourcePixels[Y0 * SourceWidth + X0];
-                const FColor& TopRight = SourcePixels[Y0 * SourceWidth + X1];
-                const FColor& BottomLeft = SourcePixels[Y1 * SourceWidth + X0];
-                const FColor& BottomRight = SourcePixels[Y1 * SourceWidth + X1];
-
-                const float BlueTop = FMath::Lerp(static_cast<float>(TopLeft.B), static_cast<float>(TopRight.B), XAlpha);
-                const float BlueBottom = FMath::Lerp(static_cast<float>(BottomLeft.B), static_cast<float>(BottomRight.B), XAlpha);
-                const float GreenTop = FMath::Lerp(static_cast<float>(TopLeft.G), static_cast<float>(TopRight.G), XAlpha);
-                const float GreenBottom = FMath::Lerp(static_cast<float>(BottomLeft.G), static_cast<float>(BottomRight.G), XAlpha);
-                const float RedTop = FMath::Lerp(static_cast<float>(TopLeft.R), static_cast<float>(TopRight.R), XAlpha);
-                const float RedBottom = FMath::Lerp(static_cast<float>(BottomLeft.R), static_cast<float>(BottomRight.R), XAlpha);
-                const float AlphaTop = FMath::Lerp(static_cast<float>(TopLeft.A), static_cast<float>(TopRight.A), XAlpha);
-                const float AlphaBottom = FMath::Lerp(static_cast<float>(BottomLeft.A), static_cast<float>(BottomRight.A), XAlpha);
-
-                FColor& OutputPixel = OutPixels[Y * TargetWidth + X];
-                OutputPixel.B = static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(BlueTop, BlueBottom, YAlpha)), 0, 255));
-                OutputPixel.G = static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(GreenTop, GreenBottom, YAlpha)), 0, 255));
-                OutputPixel.R = static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(RedTop, RedBottom, YAlpha)), 0, 255));
-                OutputPixel.A = static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(AlphaTop, AlphaBottom, YAlpha)), 0, 255));
-            }
-        }
-
-        return true;
-    }
-
-    bool CompressImageBytes(
-        const TArray<FColor>& Pixels,
-        const int32 Width,
-        const int32 Height,
-        const EImageFormat Format,
-        const int32 Quality,
-        TArray<uint8>& OutBytes)
-    {
-        OutBytes.Reset();
-
-        if (Pixels.Num() != Width * Height || Width <= 0 || Height <= 0)
-        {
-            return false;
-        }
-
-        IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-        const TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(Format);
-        if (!ImageWrapper.IsValid())
-        {
-            return false;
-        }
-
-        if (!ImageWrapper->SetRaw(Pixels.GetData(), Pixels.Num() * sizeof(FColor), Width, Height, ERGBFormat::BGRA, 8))
-        {
-            return false;
-        }
-
-        const TArray64<uint8> CompressedBytes = ImageWrapper->GetCompressed(Quality);
-        OutBytes.Append(CompressedBytes);
-        return OutBytes.Num() > 0;
-    }
-
-    bool BuildImageDataUrl(const FString& ImagePath, FString& OutDataUrl, FString& OutError)
-    {
-        OutDataUrl.Empty();
-        OutError.Empty();
-
-        if (ImagePath.IsEmpty())
-        {
-            return true;
-        }
-
-        const FString OriginalMimeType = GetImageMimeType(ImagePath);
-        if (OriginalMimeType.IsEmpty())
-        {
-            OutError = TEXT("Only png, jpg, jpeg, webp, gif, and bmp images are supported right now.");
-            return false;
-        }
-
-        if (!FPaths::FileExists(ImagePath))
-        {
-            OutError = FString::Printf(TEXT("Attached image was not found: %s"), *ImagePath);
-            return false;
-        }
-
-        TArray<uint8> FileBytes;
-        if (!FFileHelper::LoadFileToArray(FileBytes, *ImagePath))
-        {
-            OutError = FString::Printf(TEXT("Failed to read attached image: %s"), *ImagePath);
-            return false;
-        }
-
-        FString OutputMimeType = OriginalMimeType;
-        TArray<uint8> OutputBytes = FileBytes;
-
-        IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-        const EImageFormat DetectedFormat = ImageWrapperModule.DetectImageFormat(FileBytes.GetData(), FileBytes.Num());
-        const bool bCanReencode = DetectedFormat == EImageFormat::PNG || DetectedFormat == EImageFormat::JPEG || DetectedFormat == EImageFormat::BMP;
-        if (bCanReencode)
-        {
-            const TSharedPtr<IImageWrapper> SourceWrapper = ImageWrapperModule.CreateImageWrapper(DetectedFormat);
-            if (SourceWrapper.IsValid() && SourceWrapper->SetCompressed(FileBytes.GetData(), FileBytes.Num()))
-            {
-                TArray64<uint8> RawBytes64;
-                if (SourceWrapper->GetRaw(ERGBFormat::BGRA, 8, RawBytes64))
-                {
-                    const int32 SourceWidth = SourceWrapper->GetWidth();
-                    const int32 SourceHeight = SourceWrapper->GetHeight();
-                    const int32 PixelCount = SourceWidth * SourceHeight;
-                    if (PixelCount > 0 && RawBytes64.Num() == static_cast<int64>(PixelCount) * sizeof(FColor))
-                    {
-                        TArray<FColor> SourcePixels;
-                        SourcePixels.SetNumUninitialized(PixelCount);
-                        FMemory::Memcpy(SourcePixels.GetData(), RawBytes64.GetData(), RawBytes64.Num());
-
-                        bool bHasAlpha = false;
-                        for (const FColor& Pixel : SourcePixels)
-                        {
-                            if (Pixel.A < 255)
-                            {
-                                bHasAlpha = true;
-                                break;
-                            }
-                        }
-
-                        const int32 SourceLongEdge = FMath::Max(SourceWidth, SourceHeight);
-                        const float ResizeScale = SourceLongEdge > MaxInlineImageLongEdge
-                            ? static_cast<float>(MaxInlineImageLongEdge) / static_cast<float>(SourceLongEdge)
-                            : 1.0f;
-                        const int32 TargetWidth = FMath::Max(1, FMath::RoundToInt(static_cast<float>(SourceWidth) * ResizeScale));
-                        const int32 TargetHeight = FMath::Max(1, FMath::RoundToInt(static_cast<float>(SourceHeight) * ResizeScale));
-
-                        TArray<FColor> WorkingPixels;
-                        if (!ResizeImageBilinear(SourcePixels, SourceWidth, SourceHeight, TargetWidth, TargetHeight, WorkingPixels))
-                        {
-                            WorkingPixels = SourcePixels;
-                        }
-
-                        const FString SourceExtension = FPaths::GetExtension(ImagePath, false).ToLower();
-                        const bool bPreferPng = bHasAlpha || SourceExtension == TEXT("png");
-                        EImageFormat OutputFormat = bPreferPng ? EImageFormat::PNG : EImageFormat::JPEG;
-                        int32 Quality = OutputFormat == EImageFormat::JPEG ? PhotoJpegQuality : 100;
-
-                        TArray<uint8> ReencodedBytes;
-                        if (CompressImageBytes(WorkingPixels, TargetWidth, TargetHeight, OutputFormat, Quality, ReencodedBytes))
-                        {
-                            FString ReencodedMimeType = GetMimeTypeFromImageFormat(OutputFormat);
-                            if (OutputFormat == EImageFormat::PNG && !bHasAlpha && ReencodedBytes.Num() > MaxPreferredPngBytes)
-                            {
-                                TArray<uint8> JpegFallbackBytes;
-                                if (CompressImageBytes(WorkingPixels, TargetWidth, TargetHeight, EImageFormat::JPEG, ScreenshotFallbackJpegQuality, JpegFallbackBytes) && JpegFallbackBytes.Num() > 0 && JpegFallbackBytes.Num() < ReencodedBytes.Num())
-                                {
-                                    ReencodedBytes = MoveTemp(JpegFallbackBytes);
-                                    ReencodedMimeType = TEXT("image/jpeg");
-                                }
-                            }
-
-                            const bool bDidResize = TargetWidth != SourceWidth || TargetHeight != SourceHeight;
-                            if (!( !bDidResize && ReencodedMimeType.Equals(OriginalMimeType, ESearchCase::CaseSensitive) && ReencodedBytes.Num() >= FileBytes.Num()))
-                            {
-                                OutputBytes = MoveTemp(ReencodedBytes);
-                                OutputMimeType = ReencodedMimeType;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        OutDataUrl = FString::Printf(TEXT("data:%s;base64,%s"), *OutputMimeType, *FBase64::Encode(OutputBytes));
-        return true;
-    }
-
-    FString BuildUserDisplayText(const FString& UserPrompt, const TArray<FString>& ImagePaths)
-    {
-        const FString TrimmedPrompt = UserPrompt.TrimStartAndEnd();
-        if (ImagePaths.Num() == 0)
-        {
-            return TrimmedPrompt;
-        }
-
-        TArray<FString> AttachmentNames;
-        AttachmentNames.Reserve(ImagePaths.Num());
-        for (const FString& ImagePath : ImagePaths)
-        {
-            if (!ImagePath.IsEmpty())
-            {
-                AttachmentNames.Add(FPaths::GetCleanFilename(ImagePath));
-            }
-        }
-
-        const FString AttachmentLabel = AttachmentNames.Num() == 1
-            ? FString::Printf(TEXT("[Image Attached: %s]"), *AttachmentNames[0])
-            : FString::Printf(TEXT("[Images Attached: %s]"), *FString::Join(AttachmentNames, TEXT(", ")));
-        if (TrimmedPrompt.IsEmpty())
-        {
-            return AttachmentLabel;
-        }
-
-        return FString::Printf(TEXT("%s\n%s"), *AttachmentLabel, *TrimmedPrompt);
-    }
-
     bool IsOpenAIOfficialUrl(const FString& InBaseUrl)
     {
         FString Normalized = InBaseUrl.TrimStartAndEnd();
@@ -1058,63 +770,6 @@ void FAIEditorAssistantChatController::UpdateDraft(const FString& DraftText)
     }
 }
 
-void FAIEditorAssistantChatController::AddPendingImagePaths(const TArray<FString>& ImagePaths)
-{
-    if (FAIEditorAssistantChatSession* Session = GetActiveSession())
-    {
-        bool bDidChange = false;
-        for (const FString& ImagePath : ImagePaths)
-        {
-            const FString TrimmedPath = ImagePath.TrimStartAndEnd();
-            if (TrimmedPath.IsEmpty() || Session->PendingImagePaths.Contains(TrimmedPath))
-            {
-                continue;
-            }
-
-            Session->PendingImagePaths.Add(TrimmedPath);
-            bDidChange = true;
-        }
-
-        if (!bDidChange)
-        {
-            return;
-        }
-
-        PersistActiveSession();
-        BroadcastStateChanged();
-    }
-}
-
-void FAIEditorAssistantChatController::RemovePendingImageAt(const int32 ImageIndex)
-{
-    if (FAIEditorAssistantChatSession* Session = GetActiveSession())
-    {
-        if (!Session->PendingImagePaths.IsValidIndex(ImageIndex))
-        {
-            return;
-        }
-
-        Session->PendingImagePaths.RemoveAt(ImageIndex);
-        PersistActiveSession();
-        BroadcastStateChanged();
-    }
-}
-
-void FAIEditorAssistantChatController::ClearPendingImages()
-{
-    if (FAIEditorAssistantChatSession* Session = GetActiveSession())
-    {
-        if (Session->PendingImagePaths.Num() == 0)
-        {
-            return;
-        }
-
-        Session->PendingImagePaths.Reset();
-        PersistActiveSession();
-        BroadcastStateChanged();
-    }
-}
-
 void FAIEditorAssistantChatController::SubmitPrompt()
 {
     if (!CanSendRequest())
@@ -1141,24 +796,15 @@ void FAIEditorAssistantChatController::SubmitPrompt()
     }
 
     const FString UserPrompt = Session->DraftPrompt.TrimStartAndEnd();
-    TArray<FString> ImagePaths;
-    for (const FString& PendingPath : Session->PendingImagePaths)
-    {
-        const FString TrimmedPath = PendingPath.TrimStartAndEnd();
-        if (!TrimmedPath.IsEmpty())
-        {
-            ImagePaths.Add(TrimmedPath);
-        }
-    }
 
-    if (UserPrompt.IsEmpty() && ImagePaths.Num() == 0)
+    if (UserPrompt.IsEmpty())
     {
-        FinishTurnWithError(TEXT("Prompt is empty. Describe what you want the model to do, or attach one or more images."));
+        FinishTurnWithError(TEXT("Prompt is empty. Describe what you want the model to do."));
         return;
     }
 
     FString BuildError;
-    const TSharedPtr<FJsonObject> UserMessageObject = BuildUserMessageObject(UserPrompt, ImagePaths, BuildError);
+    const TSharedPtr<FJsonObject> UserMessageObject = BuildUserMessageObject(UserPrompt, BuildError);
     if (!UserMessageObject.IsValid())
     {
         FinishTurnWithError(BuildError.IsEmpty() ? TEXT("Failed to build the user message.") : BuildError);
@@ -1166,7 +812,7 @@ void FAIEditorAssistantChatController::SubmitPrompt()
     }
 
     Session->DraftPrompt.Empty();
-    BeginUserTurn(BuildUserDisplayText(UserPrompt, ImagePaths), UserMessageObject);
+    BeginUserTurn(UserPrompt, UserMessageObject);
 
     if (!SendChatRequest())
     {
@@ -1272,6 +918,19 @@ void FAIEditorAssistantChatController::CloseSession(const FString& SessionId)
     BroadcastStateChanged();
 }
 
+void FAIEditorAssistantChatController::SetAgentRole(const FString& RoleId)
+{
+    FAIEditorAssistantChatSession* Session = GetActiveSession();
+    if (Session == nullptr || !CanEditSessions())
+    {
+        return;
+    }
+
+    Session->AgentRoleId = RoleId;
+    SessionStore->SaveSession(*Session);
+    BroadcastStateChanged();
+}
+
 void FAIEditorAssistantChatController::ApprovePendingTool()
 {
     ResumeAfterToolConfirmation(true);
@@ -1285,6 +944,15 @@ void FAIEditorAssistantChatController::RejectPendingTool()
 FAIEditorAssistantChatPanelViewState FAIEditorAssistantChatController::GetViewState() const
 {
     FAIEditorAssistantChatPanelViewState ViewState;
+
+    for (const FAIEditorAssistantAgentRoleDefinition& Role : GetPredefinedAgentRoles())
+    {
+        FAIEditorAssistantAgentRoleViewData RoleViewData;
+        RoleViewData.RoleId = Role.RoleId;
+        RoleViewData.DisplayName = Role.DisplayName;
+        ViewState.AgentRoles.Add(MoveTemp(RoleViewData));
+    }
+
     ViewState.Model = CurrentModel;
     ViewState.ModelOptions = CachedModelOptions;
     ViewState.ModelListStatus = ModelListStatus;
@@ -1307,9 +975,13 @@ FAIEditorAssistantChatPanelViewState FAIEditorAssistantChatController::GetViewSt
 
     if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
     {
+        ViewState.ActiveAgentRoleId = Session->AgentRoleId;
+        if (const FAIEditorAssistantAgentRoleDefinition* Role = FindAgentRole(Session->AgentRoleId))
+        {
+            ViewState.ActiveAgentRoleDisplayName = Role->DisplayName;
+        }
+
         ViewState.ContextSummary = BuildContextSummary(*Session);
-        ViewState.PendingAttachmentSummary = BuildPendingAttachmentSummary(*Session);
-        ViewState.PendingAttachmentPaths = Session->PendingImagePaths;
         ViewState.DraftPrompt = Session->DraftPrompt;
         ViewState.ToolConfirmation.bIsVisible = Session->bAwaitingToolConfirmation;
         ViewState.ToolConfirmation.Prompt = GetPendingToolApprovalPrompt();
@@ -1797,21 +1469,6 @@ FString FAIEditorAssistantChatController::BuildContextSummary(const FAIEditorAss
         *DraftSuffix);
 }
 
-FString FAIEditorAssistantChatController::BuildPendingAttachmentSummary(const FAIEditorAssistantChatSession& Session) const
-{
-    if (Session.PendingImagePaths.Num() == 0)
-    {
-        return TEXT("Attachment: none");
-    }
-
-    if (Session.PendingImagePaths.Num() == 1)
-    {
-        return FString::Printf(TEXT("Attachment: %s"), *FPaths::GetCleanFilename(Session.PendingImagePaths[0]));
-    }
-
-    return FString::Printf(TEXT("Attachments: %d image(s)"), Session.PendingImagePaths.Num());
-}
-
 void FAIEditorAssistantChatController::AppendMessage(const FString& Role, const FString& Text)
 {
     if (FAIEditorAssistantChatSession* Session = GetActiveSession())
@@ -1920,6 +1577,7 @@ FAIEditorAssistantChatSession& FAIEditorAssistantChatController::CreateSessionIn
     Session.CreatedAt = FDateTime::UtcNow();
     Session.UpdatedAt = Session.CreatedAt;
     Session.bHasGeneratedTitle = false;
+    Session.AgentRoleId = AIEditorAssistantAgentRoles::RoleIdGeneral;
 
     if (bMakeActive)
     {
@@ -2070,7 +1728,6 @@ void FAIEditorAssistantChatController::BeginUserTurn(const FString& UserDisplayT
         Session->bAwaitingToolConfirmation = false;
         Session->PendingUserPrompt = UserDisplayText;
         Session->DraftPrompt.Empty();
-        Session->PendingImagePaths.Reset();
 
         AppendMessage(TEXT("You"), UserDisplayText);
         AddRequestMessage(UserMessageObject);
@@ -2700,45 +2357,13 @@ bool FAIEditorAssistantChatController::TryParseToolCallsFromMessage(const TShare
     return OutToolCalls.Num() > 0;
 }
 
-TSharedPtr<FJsonObject> FAIEditorAssistantChatController::BuildUserMessageObject(const FString& UserPrompt, const TArray<FString>& ImagePaths, FString& OutError) const
+TSharedPtr<FJsonObject> FAIEditorAssistantChatController::BuildUserMessageObject(const FString& UserPrompt, FString& OutError) const
 {
     OutError.Empty();
 
     TSharedPtr<FJsonObject> MessageObject = MakeShared<FJsonObject>();
     MessageObject->SetStringField(TEXT("role"), TEXT("user"));
-
-    const FString TrimmedPrompt = UserPrompt.TrimStartAndEnd();
-    if (ImagePaths.Num() == 0)
-    {
-        MessageObject->SetStringField(TEXT("content"), TrimmedPrompt);
-        return MessageObject;
-    }
-
-    TArray<TSharedPtr<FJsonValue>> ContentParts;
-    TSharedPtr<FJsonObject> TextPart = MakeShared<FJsonObject>();
-    TextPart->SetStringField(TEXT("type"), TEXT("text"));
-    TextPart->SetStringField(TEXT("text"), TrimmedPrompt.IsEmpty() ? TEXT("Please analyze the attached images.") : TrimmedPrompt);
-    ContentParts.Add(MakeShared<FJsonValueObject>(TextPart));
-
-    for (const FString& ImagePath : ImagePaths)
-    {
-        FString ImageDataUrl;
-        if (!BuildImageDataUrl(ImagePath, ImageDataUrl, OutError))
-        {
-            return nullptr;
-        }
-
-        TSharedPtr<FJsonObject> ImageUrlObject = MakeShared<FJsonObject>();
-        ImageUrlObject->SetStringField(TEXT("url"), ImageDataUrl);
-        ImageUrlObject->SetStringField(TEXT("detail"), TEXT("auto"));
-
-        TSharedPtr<FJsonObject> ImagePart = MakeShared<FJsonObject>();
-        ImagePart->SetStringField(TEXT("type"), TEXT("image_url"));
-        ImagePart->SetObjectField(TEXT("image_url"), ImageUrlObject);
-        ContentParts.Add(MakeShared<FJsonValueObject>(ImagePart));
-    }
-
-    MessageObject->SetArrayField(TEXT("content"), ContentParts);
+    MessageObject->SetStringField(TEXT("content"), UserPrompt.TrimStartAndEnd());
     return MessageObject;
 }
 
@@ -2801,7 +2426,13 @@ TSharedPtr<FJsonObject> FAIEditorAssistantChatController::BuildToolResultMessage
 TArray<TSharedPtr<FJsonValue>> FAIEditorAssistantChatController::BuildRequestMessages() const
 {
     TArray<TSharedPtr<FJsonValue>> Messages;
-    Messages.Add(MakeShared<FJsonValueObject>(BuildAgentSystemMessageObject()));
+
+    FString ActiveRoleId;
+    if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
+    {
+        ActiveRoleId = Session->AgentRoleId;
+    }
+    Messages.Add(MakeShared<FJsonValueObject>(BuildAgentSystemMessageObject(ActiveRoleId)));
 
     if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
     {
@@ -2818,7 +2449,16 @@ TArray<TSharedPtr<FJsonValue>> FAIEditorAssistantChatController::BuildToolDefini
 {
     TArray<TSharedPtr<FJsonValue>> Tools;
 
-    for (const FAIEditorAssistantToolDefinition& Definition : FAIEditorAssistantToolRuntime::Get().GetToolDefinitions())
+    FString ActiveRoleId;
+    if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
+    {
+        ActiveRoleId = Session->AgentRoleId;
+    }
+
+    const TArray<FAIEditorAssistantToolDefinition>& SourceDefinitions =
+        FAIEditorAssistantToolRuntime::Get().GetToolDefinitionsForRole(ActiveRoleId);
+
+    for (const FAIEditorAssistantToolDefinition& Definition : SourceDefinitions)
     {
         TSharedPtr<FJsonObject> FunctionObject = MakeShared<FJsonObject>();
         FunctionObject->SetStringField(TEXT("name"), Definition.Name);

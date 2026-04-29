@@ -22,14 +22,12 @@ public:
     void SetReasoningMode(const FString& InReasoningMode);
     void RefreshReasoningOptions();
     void UpdateDraft(const FString& DraftText);
-    void AddPendingImagePaths(const TArray<FString>& ImagePaths);
-    void RemovePendingImageAt(int32 ImageIndex);
-    void ClearPendingImages();
     void SubmitPrompt();
     void CancelCurrentWork();
     void CreateSession();
     void ActivateSession(const FString& SessionId);
     void CloseSession(const FString& SessionId);
+    void SetAgentRole(const FString& RoleId);
     void ApprovePendingTool();
     void RejectPendingTool();
 
@@ -105,13 +103,12 @@ private:
         bool& bOutHadChoices) const;
     bool TryParseToolCallsFromMessage(const TSharedPtr<FJsonObject>& MessageObject, TArray<FAIEditorAssistantPendingToolCall>& OutToolCalls) const;
 
-    TSharedPtr<FJsonObject> BuildUserMessageObject(const FString& UserPrompt, const TArray<FString>& ImagePaths, FString& OutError) const;
+    TSharedPtr<FJsonObject> BuildUserMessageObject(const FString& UserPrompt, FString& OutError) const;
     TSharedPtr<FJsonObject> BuildAssistantMessageObject(const FString& AssistantContent, const FString& ReasoningContent, const TArray<FAIEditorAssistantPendingToolCall>& ToolCalls, const TSharedPtr<FJsonObject>& ProviderPayload) const;
     TSharedPtr<FJsonObject> BuildToolResultMessageObject(const FString& ToolCallId, const FString& ToolName, const FString& Content) const;
     TArray<TSharedPtr<FJsonValue>> BuildRequestMessages() const;
     TArray<TSharedPtr<FJsonValue>> BuildToolDefinitions() const;
 
-    FString BuildPendingAttachmentSummary(const FAIEditorAssistantChatSession& Session) const;
     FString ExtractErrorMessage(const FString& ResponseBody) const;
     FString FormatToolArgumentsSummary(const FAIEditorAssistantPendingToolCall& ToolCall) const;
     void AppendToolCallMessages(const TArray<FAIEditorAssistantPendingToolCall>& ToolCalls);

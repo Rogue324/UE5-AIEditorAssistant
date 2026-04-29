@@ -1,5 +1,6 @@
 #include "Tools/AIEditorAssistantToolRuntime.h"
 
+#include "Chat/Model/AIEditorAssistantAgentRole.h"
 #include "Editor.h"
 #include "Engine/Blueprint.h"
 #include "Engine/Selection.h"
@@ -343,6 +344,37 @@ void FAIEditorAssistantToolRuntime::Shutdown()
 const TArray<FAIEditorAssistantToolDefinition>& FAIEditorAssistantToolRuntime::GetToolDefinitions() const
 {
     return Definitions;
+}
+
+const TArray<FAIEditorAssistantToolDefinition>& FAIEditorAssistantToolRuntime::GetToolDefinitionsForRole(const FString& RoleId) const
+{
+    if (RoleId.IsEmpty() || RoleId == AIEditorAssistantAgentRoles::RoleIdGeneral)
+    {
+        return Definitions;
+    }
+
+    if (const TArray<FAIEditorAssistantToolDefinition>* Cached = RoleDefinitionsCache.Find(RoleId))
+    {
+        return *Cached;
+    }
+
+    const FAIEditorAssistantAgentRoleDefinition* Role = FindAgentRole(RoleId);
+    if (Role == nullptr)
+    {
+        return Definitions;
+    }
+
+    TArray<FAIEditorAssistantToolDefinition> RoleDefinitions;
+    for (const FAIEditorAssistantToolDefinition& Definition : Definitions)
+    {
+        if (Role->ToolNames.Contains(Definition.Name))
+        {
+            RoleDefinitions.Add(Definition);
+        }
+    }
+
+    RoleDefinitionsCache.Add(RoleId, MoveTemp(RoleDefinitions));
+    return RoleDefinitionsCache[RoleId];
 }
 
 const FAIEditorAssistantToolDefinition* FAIEditorAssistantToolRuntime::FindDefinition(const FString& ToolName) const
