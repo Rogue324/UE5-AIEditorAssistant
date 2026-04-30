@@ -118,8 +118,8 @@ const ISlateStyle& FAIEditorAssistantMarkdownRichTextRenderer::GetStyle()
         StyleSet->Set("BubbleTool", new FSlateRoundedBoxBrush(FLinearColor(0.26f, 0.19f, 0.31f, 0.96f), 14.0f, FLinearColor(0.50f, 0.34f, 0.58f, 0.95f), 1.0f));
         StyleSet->Set("BubbleToolResult", new FSlateRoundedBoxBrush(FLinearColor(0.28f, 0.23f, 0.17f, 0.96f), 14.0f, FLinearColor(0.56f, 0.43f, 0.26f, 0.95f), 1.0f));
         StyleSet->Set("CodeBlockBubble", new FSlateRoundedBoxBrush(FLinearColor(0.08f, 0.10f, 0.12f, 0.98f), 10.0f, FLinearColor(0.23f, 0.28f, 0.35f, 0.98f), 1.0f));
-        StyleSet->Set("TableHeaderBubble", new FSlateRoundedBoxBrush(FLinearColor(0.20f, 0.24f, 0.29f, 0.95f), 8.0f, FLinearColor(0.34f, 0.41f, 0.50f, 0.95f), 1.0f));
-        StyleSet->Set("TableCellBubble", new FSlateRoundedBoxBrush(FLinearColor(0.12f, 0.14f, 0.17f, 0.95f), 8.0f, FLinearColor(0.25f, 0.29f, 0.34f, 0.95f), 1.0f));
+        StyleSet->Set("TableHeaderBubble", new FSlateRoundedBoxBrush(FLinearColor(0.20f, 0.24f, 0.29f, 0.95f), 8.0f));
+        StyleSet->Set("TableCellBubble", new FSlateRoundedBoxBrush(FLinearColor(0.12f, 0.14f, 0.17f, 0.95f), 8.0f));
         FSlateStyleRegistry::RegisterSlateStyle(*StyleSet);
     }
 

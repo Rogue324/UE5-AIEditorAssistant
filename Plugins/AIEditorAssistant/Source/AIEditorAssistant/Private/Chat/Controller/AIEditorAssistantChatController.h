@@ -83,6 +83,7 @@ private:
     void AbortAssistantResponse();
     void ResetStreamingState();
     void BeginUserTurn(const FString& UserDisplayText, const TSharedPtr<FJsonObject>& UserMessageObject);
+    void BeginRoleDetectionAndSend();
     bool SendChatRequest();
     void ExecuteNextPendingToolCall();
     void ExecuteCurrentPendingToolCall(bool bApproved);
@@ -123,6 +124,7 @@ private:
     FString CurrentModel;
     FString StatusMessage;
     bool bIsSending = false;
+    bool bIsDetectingRole = false;
     bool bIsModelListLoading = false;
     bool bAllowManualModelInput = false;
     bool bIsReasoningOptionsLoading = false;
@@ -138,4 +140,5 @@ private:
     int32 NextRequestSerial = 0;
     int32 ActiveRequestSerial = 0;
     FSimpleMulticastDelegate StateChangedDelegate;
+    double LastBroadcastTime = 0.0;
 };

@@ -39,66 +39,6 @@ void SAIEditorAssistantChatPanel::Construct(const FArguments& InArgs)
 
         + SVerticalBox::Slot()
         .AutoHeight()
-        .Padding(8.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("AI Editor Assistant Chat")))
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-        ]
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(8.0f, 0.0f, 8.0f, 4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("This panel keeps conversation context and exposes native UE editor tools to the model.")))
-            .AutoWrapText(true)
-        ]
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(8.0f, 4.0f, 8.0f, 4.0f)
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
-            [
-                SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Agent Role")))
-                ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SAssignNew(AgentRoleComboBox, SComboBox<TSharedPtr<FString>>)
-                    .OptionsSource(&AgentRoleOptions)
-                    .OnSelectionChanged(this, &SAIEditorAssistantChatPanel::HandleAgentRoleSelectionChanged)
-                    .OnGenerateWidget(this, &SAIEditorAssistantChatPanel::GenerateAgentRoleOptionWidget)
-                    .Content()
-                    [
-                        SNew(STextBlock)
-                        .Text(this, &SAIEditorAssistantChatPanel::GetSelectedAgentRoleText)
-                    ]
-                ]
-            ]
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            [
-                SNullWidget::NullWidget
-            ]
-        ]
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
         .Padding(8.0f, 4.0f, 8.0f, 4.0f)
         [
             SNew(SHorizontalBox)
@@ -257,22 +197,6 @@ void SAIEditorAssistantChatPanel::Construct(const FArguments& InArgs)
         ]
 
         + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(8.0f, 0.0f, 8.0f, 4.0f)
-        [
-            SAssignNew(ContextTextBlock, STextBlock)
-            .AutoWrapText(true)
-        ]
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(8.0f, 0.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Chat History")))
-        ]
-
-        + SVerticalBox::Slot()
         .FillHeight(1.0f)
         .Padding(8.0f, 4.0f, 8.0f, 4.0f)
         [
@@ -397,45 +321,6 @@ void SAIEditorAssistantChatPanel::RefreshFromController()
 
     const FAIEditorAssistantChatPanelViewState ViewState = ChatController->GetViewState();
 
-    AgentRoleOptions.Reset();
-    AgentRoleOptions.Reserve(ViewState.AgentRoles.Num());
-    SelectedAgentRoleOption.Reset();
-    for (const FAIEditorAssistantAgentRoleViewData& Role : ViewState.AgentRoles)
-    {
-        TSharedPtr<FString> Item = MakeShared<FString>(Role.DisplayName);
-        if (Role.RoleId.Equals(ViewState.ActiveAgentRoleId, ESearchCase::CaseSensitive))
-        {
-            SelectedAgentRoleOption = Item;
-        }
-        AgentRoleOptions.Add(Item);
-    }
-
-    if (!SelectedAgentRoleOption.IsValid() && AgentRoleOptions.Num() > 0)
-    {
-        SelectedAgentRoleOption = AgentRoleOptions[0];
-    }
-
-    if (AgentRoleComboBox.IsValid())
-    {
-        AgentRoleComboBox->SetEnabled(ViewState.bCanEditSessions && AgentRoleOptions.Num() > 0);
-        AgentRoleComboBox->RefreshOptions();
-        if (SelectedAgentRoleOption.IsValid())
-        {
-            const TSharedPtr<FString> CurrentSelected = AgentRoleComboBox->GetSelectedItem();
-            const bool bNeedsSelectionUpdate =
-                !CurrentSelected.IsValid() ||
-                !CurrentSelected->Equals(*SelectedAgentRoleOption, ESearchCase::CaseSensitive);
-            if (bNeedsSelectionUpdate)
-            {
-                AgentRoleComboBox->SetSelectedItem(SelectedAgentRoleOption);
-            }
-        }
-        else
-        {
-            AgentRoleComboBox->ClearSelection();
-        }
-    }
-
     ModelOptions.Reset();
     ModelOptions.Reserve(ViewState.ModelOptions.Num());
     SelectedModelOption.Reset();
@@ -543,9 +428,9 @@ void SAIEditorAssistantChatPanel::RefreshFromController()
         StatusTextBlock->SetText(FText::FromString(ViewState.StatusMessage));
     }
 
-    if (ContextTextBlock.IsValid())
+    if (StatusTextBlock.IsValid())
     {
-        ContextTextBlock->SetText(FText::FromString(ViewState.ContextSummary));
+        StatusTextBlock->SetText(FText::FromString(ViewState.StatusMessage));
     }
 
     if (SessionTabBar.IsValid())
@@ -621,40 +506,4 @@ TSharedRef<SWidget> SAIEditorAssistantChatPanel::GenerateReasoningOptionWidget(T
 FText SAIEditorAssistantChatPanel::GetSelectedReasoningText() const
 {
     return FText::FromString(SelectedReasoningOption.IsValid() ? *SelectedReasoningOption : TEXT("Select reasoning mode"));
-}
-
-void SAIEditorAssistantChatPanel::HandleAgentRoleSelectionChanged(TSharedPtr<FString> InSelectedItem, ESelectInfo::Type SelectInfo)
-{
-    if (SelectInfo == ESelectInfo::Direct)
-    {
-        return;
-    }
-
-    if (!ChatController.IsValid() || !InSelectedItem.IsValid())
-    {
-        return;
-    }
-
-    SelectedAgentRoleOption = InSelectedItem;
-
-    const FAIEditorAssistantChatPanelViewState ViewState = ChatController->GetViewState();
-    for (const FAIEditorAssistantAgentRoleViewData& Role : ViewState.AgentRoles)
-    {
-        if (Role.DisplayName.Equals(*InSelectedItem, ESearchCase::CaseSensitive))
-        {
-            ChatController->SetAgentRole(Role.RoleId);
-            return;
-        }
-    }
-}
-
-TSharedRef<SWidget> SAIEditorAssistantChatPanel::GenerateAgentRoleOptionWidget(TSharedPtr<FString> InItem) const
-{
-    return SNew(STextBlock)
-        .Text(FText::FromString(InItem.IsValid() ? *InItem : FString()));
-}
-
-FText SAIEditorAssistantChatPanel::GetSelectedAgentRoleText() const
-{
-    return FText::FromString(SelectedAgentRoleOption.IsValid() ? *SelectedAgentRoleOption : TEXT("Select role"));
 }

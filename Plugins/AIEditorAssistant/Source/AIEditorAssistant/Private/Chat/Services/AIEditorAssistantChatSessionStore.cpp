@@ -138,6 +138,7 @@ bool FAIEditorAssistantFileChatSessionStore::LoadSession(const FString& SessionI
             FAIEditorAssistantChatMessage Message;
             (*MessageObject)->TryGetStringField(TEXT("role"), Message.Role);
             (*MessageObject)->TryGetStringField(TEXT("content"), Message.Content);
+            (*MessageObject)->TryGetStringField(TEXT("tool_activity_content"), Message.ToolActivityContent);
             OutSession.ConversationMessages.Add(MoveTemp(Message));
         }
     }
@@ -177,6 +178,10 @@ bool FAIEditorAssistantFileChatSessionStore::SaveSession(const FAIEditorAssistan
         TSharedPtr<FJsonObject> MessageObject = MakeShared<FJsonObject>();
         MessageObject->SetStringField(TEXT("role"), Message.Role);
         MessageObject->SetStringField(TEXT("content"), Message.Content);
+        if (!Message.ToolActivityContent.IsEmpty())
+        {
+            MessageObject->SetStringField(TEXT("tool_activity_content"), Message.ToolActivityContent);
+        }
         ConversationValues.Add(MakeShared<FJsonValueObject>(MessageObject));
     }
     SessionObject->SetArrayField(TEXT("conversation_messages"), ConversationValues);

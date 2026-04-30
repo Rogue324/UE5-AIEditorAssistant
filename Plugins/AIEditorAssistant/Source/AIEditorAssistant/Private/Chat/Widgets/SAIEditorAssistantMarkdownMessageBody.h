@@ -26,4 +26,6 @@ private:
 
     TSharedPtr<SVerticalBox> BodyContainer;
     TSharedPtr<ITextLayoutMarshaller> RichTextMarshaller;
+    TArray<TSharedPtr<class SBox>> BlockBoxes;
+    FString CachedMarkdownText;
 };

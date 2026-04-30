@@ -3,6 +3,7 @@
 #include "AIEditorAssistantSettings.h"
 #include "Chat/Markdown/AIEditorAssistantMarkdownParser.h"
 #include "Chat/Model/AIEditorAssistantAgentRole.h"
+#include "HAL/PlatformTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Tools/AIEditorAssistantToolRuntime.h"
@@ -814,10 +815,109 @@ void FAIEditorAssistantChatController::SubmitPrompt()
     Session->DraftPrompt.Empty();
     BeginUserTurn(UserPrompt, UserMessageObject);
 
-    if (!SendChatRequest())
+    BeginRoleDetectionAndSend();
+}
+
+void FAIEditorAssistantChatController::BeginRoleDetectionAndSend()
+{
+    FAIEditorAssistantChatSession* Session = GetActiveSession();
+    if (Session == nullptr)
     {
-        FinishTurnWithError(TEXT("Failed to start the chat request."));
+        FinishTurnWithError(TEXT("Session lost."));
+        return;
     }
+
+    FString ServiceError;
+    FAIEditorAssistantChatServiceSettings Settings;
+    if (!ResolveServiceSettings(Settings, ServiceError))
+    {
+        FinishTurnWithError(ServiceError);
+        return;
+    }
+
+    bIsDetectingRole = true;
+    BroadcastStateChanged();
+
+    FAIEditorAssistantChatCompletionRequest ClassificationRequest;
+    ClassificationRequest.bStream = false;
+
+    TSharedPtr<FJsonObject> ClassifySystemMessage = MakeShared<FJsonObject>();
+    ClassifySystemMessage->SetStringField(TEXT("role"), TEXT("system"));
+    const FString RoleList = TEXT("general, blueprint, level-designer, asset-manager, performance");
+    ClassifySystemMessage->SetStringField(TEXT("content"), FString::Printf(
+        TEXT("Classify this user request into exactly one of these roles: %s.\n")
+        TEXT("Reply with ONLY the role name, nothing else.\n")
+        TEXT("Context:\n") TEXT("- general: anything not listed below\n")
+        TEXT("- blueprint: Blueprint graph editing, nodes, pins, variables, interfaces, functions, compilation\n")
+        TEXT("- level-designer: actors, transforms, components, spawning, level layout, PIE, viewport\n")
+        TEXT("- asset-manager: asset inspection, creation, deletion, materials, references, project structure\n")
+        TEXT("- performance: profiling, logging, console variables, insights, debugging, optimization"),
+        *RoleList));
+    ClassificationRequest.Messages.Add(MakeShared<FJsonValueObject>(ClassifySystemMessage));
+
+    TSharedPtr<FJsonObject> UserClassifyMessage = MakeShared<FJsonObject>();
+    UserClassifyMessage->SetStringField(TEXT("role"), TEXT("user"));
+
+    FString ClassificationPrompt = GetLastConversationMessageByRole(*Session, TEXT("You"));
+    UserClassifyMessage->SetStringField(TEXT("content"), ClassificationPrompt.IsEmpty() ? TEXT("Classify this request.") : ClassificationPrompt);
+
+    ClassificationRequest.Messages.Add(MakeShared<FJsonValueObject>(UserClassifyMessage));
+
+    ClassificationRequest.ToolChoice.Empty();
+
+    const TWeakPtr<FAIEditorAssistantChatController> WeakController = AsShared();
+    ChatService->SendStreamingChatRequest(
+        Settings,
+        ClassificationRequest,
+        nullptr,
+        [WeakController](const FAIEditorAssistantChatServiceResponse& Response)
+        {
+            const TSharedPtr<FAIEditorAssistantChatController> Pinned = WeakController.Pin();
+            if (!Pinned.IsValid())
+            {
+                return;
+            }
+
+            FAIEditorAssistantChatSession* Session = Pinned->GetActiveSession();
+            if (Session == nullptr)
+            {
+                return;
+            }
+
+            FString DetectedRole = AIEditorAssistantAgentRoles::RoleIdGeneral;
+            if (Response.bRequestSucceeded)
+            {
+                TSharedPtr<FJsonObject> ResponseObject;
+                TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response.ResponseBody);
+                if (FJsonSerializer::Deserialize(Reader, ResponseObject) && ResponseObject.IsValid())
+                {
+                    const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
+                    if (ResponseObject->TryGetArrayField(TEXT("choices"), Choices) && Choices != nullptr && Choices->Num() > 0)
+                    {
+                        const TSharedPtr<FJsonObject>* ChoiceObject = nullptr;
+                        if ((*Choices)[0].IsValid() && (*Choices)[0]->TryGetObject(ChoiceObject) && ChoiceObject != nullptr)
+                        {
+                            const TSharedPtr<FJsonObject>* MessageObject = nullptr;
+                            if ((*ChoiceObject)->TryGetObjectField(TEXT("message"), MessageObject) && MessageObject != nullptr)
+                            {
+                                FString Content;
+                                (*MessageObject)->TryGetStringField(TEXT("content"), Content);
+                                const FString Trimmed = Content.TrimStartAndEnd().ToLower();
+                                if (Trimmed.Contains(TEXT("blueprint"))) DetectedRole = AIEditorAssistantAgentRoles::RoleIdBlueprint;
+                                else if (Trimmed.Contains(TEXT("level"))) DetectedRole = AIEditorAssistantAgentRoles::RoleIdLevelDesigner;
+                                else if (Trimmed.Contains(TEXT("asset"))) DetectedRole = AIEditorAssistantAgentRoles::RoleIdAssetManager;
+                                else if (Trimmed.Contains(TEXT("performance"))) DetectedRole = AIEditorAssistantAgentRoles::RoleIdPerformance;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Session->AgentRoleId = DetectedRole;
+            Pinned->bIsDetectingRole = false;
+            Pinned->SessionStore->SaveSession(*Session);
+            Pinned->SendChatRequest();
+        });
 }
 
 void FAIEditorAssistantChatController::CancelCurrentWork()
@@ -945,14 +1045,6 @@ FAIEditorAssistantChatPanelViewState FAIEditorAssistantChatController::GetViewSt
 {
     FAIEditorAssistantChatPanelViewState ViewState;
 
-    for (const FAIEditorAssistantAgentRoleDefinition& Role : GetPredefinedAgentRoles())
-    {
-        FAIEditorAssistantAgentRoleViewData RoleViewData;
-        RoleViewData.RoleId = Role.RoleId;
-        RoleViewData.DisplayName = Role.DisplayName;
-        ViewState.AgentRoles.Add(MoveTemp(RoleViewData));
-    }
-
     ViewState.Model = CurrentModel;
     ViewState.ModelOptions = CachedModelOptions;
     ViewState.ModelListStatus = ModelListStatus;
@@ -975,12 +1067,6 @@ FAIEditorAssistantChatPanelViewState FAIEditorAssistantChatController::GetViewSt
 
     if (const FAIEditorAssistantChatSession* Session = GetActiveSession())
     {
-        ViewState.ActiveAgentRoleId = Session->AgentRoleId;
-        if (const FAIEditorAssistantAgentRoleDefinition* Role = FindAgentRole(Session->AgentRoleId))
-        {
-            ViewState.ActiveAgentRoleDisplayName = Role->DisplayName;
-        }
-
         ViewState.ContextSummary = BuildContextSummary(*Session);
         ViewState.DraftPrompt = Session->DraftPrompt;
         ViewState.ToolConfirmation.bIsVisible = Session->bAwaitingToolConfirmation;
@@ -1013,6 +1099,16 @@ FSimpleMulticastDelegate& FAIEditorAssistantChatController::OnStateChanged()
 
 void FAIEditorAssistantChatController::BroadcastStateChanged()
 {
+    if (bIsSending)
+    {
+        const double Now = FPlatformTime::Seconds();
+        if (LastBroadcastTime > 0.0 && (Now - LastBroadcastTime) < 0.15)
+        {
+            return;
+        }
+        LastBroadcastTime = Now;
+    }
+
     StateChangedDelegate.Broadcast();
 }
 
@@ -1024,7 +1120,7 @@ bool FAIEditorAssistantChatController::ShouldDisplayConversationMessage(const FA
 
 bool FAIEditorAssistantChatController::CanSendRequest() const
 {
-    return GetActiveSession() != nullptr && !bIsSending && !IsAwaitingToolConfirmation() && !IsGeneratingTitle();
+    return GetActiveSession() != nullptr && !bIsSending && !bIsDetectingRole && !IsAwaitingToolConfirmation() && !IsGeneratingTitle();
 }
 
 bool FAIEditorAssistantChatController::CanCancelWork() const
@@ -1043,7 +1139,7 @@ bool FAIEditorAssistantChatController::CanCancelWork() const
 
 bool FAIEditorAssistantChatController::CanEditSessions() const
 {
-    return !bIsSending && !IsAwaitingToolConfirmation() && !IsGeneratingTitle();
+    return !bIsSending && !bIsDetectingRole && !IsAwaitingToolConfirmation() && !IsGeneratingTitle();
 }
 
 bool FAIEditorAssistantChatController::IsAwaitingToolConfirmation() const
@@ -1064,7 +1160,7 @@ int32 FAIEditorAssistantChatController::GetConfiguredMaxToolRounds() const
 
 bool FAIEditorAssistantChatController::ShouldShowToolActivityInChat() const
 {
-    return GetDefault<UAIEditorAssistantSettings>()->bShowToolActivityInChat;
+    return true;
 }
 
 FAIEditorAssistantChatSession* FAIEditorAssistantChatController::GetActiveSession()
@@ -1184,7 +1280,11 @@ void FAIEditorAssistantChatController::RefreshReasoningOptionsInternal(const boo
         CachedReasoningModeOptions = {
             EAIEditorAssistantReasoningIntensity::ProviderDefault,
             EAIEditorAssistantReasoningIntensity::Disabled,
-            EAIEditorAssistantReasoningIntensity::Medium
+            EAIEditorAssistantReasoningIntensity::Minimal,
+            EAIEditorAssistantReasoningIntensity::Low,
+            EAIEditorAssistantReasoningIntensity::Medium,
+            EAIEditorAssistantReasoningIntensity::High,
+            EAIEditorAssistantReasoningIntensity::Maximum
         };
         ReasoningOptionsStatus = ResolveError;
         BroadcastStateChanged();
@@ -1246,7 +1346,11 @@ void FAIEditorAssistantChatController::RefreshReasoningOptionsInternal(const boo
         CachedReasoningModeOptions = {
             EAIEditorAssistantReasoningIntensity::ProviderDefault,
             EAIEditorAssistantReasoningIntensity::Disabled,
-            EAIEditorAssistantReasoningIntensity::Medium
+            EAIEditorAssistantReasoningIntensity::Minimal,
+            EAIEditorAssistantReasoningIntensity::Low,
+            EAIEditorAssistantReasoningIntensity::Medium,
+            EAIEditorAssistantReasoningIntensity::High,
+            EAIEditorAssistantReasoningIntensity::Maximum
         };
         ReasoningOptionsStatus = TEXT("Failed to start reasoning options request. Using fallback options.");
         BroadcastStateChanged();
@@ -1490,8 +1594,6 @@ void FAIEditorAssistantChatController::UpsertLastMessage(const FString& Role, co
         {
             Session->ConversationMessages.Add({ Role, Text });
         }
-
-        BroadcastStateChanged();
     }
 }
 
@@ -2522,30 +2624,46 @@ FString FAIEditorAssistantChatController::FormatToolArgumentsSummary(const FAIEd
 
 void FAIEditorAssistantChatController::AppendToolCallMessages(const TArray<FAIEditorAssistantPendingToolCall>& ToolCalls)
 {
-    if (!ShouldShowToolActivityInChat())
-    {
-        return;
-    }
-
     for (const FAIEditorAssistantPendingToolCall& ToolCall : ToolCalls)
     {
-        AppendMessage(
-            TEXT("Tool"),
-            FString::Printf(TEXT("Requested `%s` with arguments:\n```json\n%s\n```"), *ToolCall.Name, *FormatToolArgumentsSummary(ToolCall)));
+        const FString ToolText = FString::Printf(TEXT("Requested `%s` with arguments:\n```json\n%s\n```\n"),
+            *ToolCall.Name, *FormatToolArgumentsSummary(ToolCall));
+
+        FAIEditorAssistantChatSession* Session = GetActiveSession();
+        if (Session != nullptr && Session->ConversationMessages.Num() > 0)
+        {
+            FAIEditorAssistantChatMessage& LastMessage = Session->ConversationMessages.Last();
+            if (LastMessage.Role.Equals(TEXT("AI"), ESearchCase::IgnoreCase) && LastMessage.ToolActivityContent.IsEmpty())
+            {
+                LastMessage.ToolActivityContent = TEXT("> Tool Activity\n\n");
+            }
+            if (!LastMessage.ToolActivityContent.IsEmpty())
+            {
+                LastMessage.ToolActivityContent.Append(ToolText);
+            }
+        }
     }
 }
 
 void FAIEditorAssistantChatController::AppendToolResultMessage(const FAIEditorAssistantPendingToolCall& ToolCall, const FAIEditorAssistantToolResult& Result)
 {
-    if (!ShouldShowToolActivityInChat())
+    const FString StatusText = Result.bSuccess ? TEXT("Success") : (Result.bWasRejected ? TEXT("Rejected") : TEXT("Error"));
+    const FString ResultText = FString::Printf(TEXT("`%s` → %s: %s\n\n"), *ToolCall.Name, *StatusText, *Result.Summary);
+
+    FAIEditorAssistantChatSession* Session = GetActiveSession();
+    if (Session == nullptr)
     {
         return;
     }
 
-    const FString StatusText = Result.bSuccess ? TEXT("Success") : (Result.bWasRejected ? TEXT("Rejected") : TEXT("Error"));
-    AppendMessage(
-        TEXT("Tool Result"),
-        FString::Printf(TEXT("`%s` finished with status: %s\n\n%s"), *ToolCall.Name, *StatusText, *Result.Summary));
+    for (int32 Index = Session->ConversationMessages.Num() - 1; Index >= 0; --Index)
+    {
+        if (Session->ConversationMessages[Index].Role.Equals(TEXT("AI"), ESearchCase::IgnoreCase))
+        {
+            Session->ConversationMessages[Index].ToolActivityContent.Append(ResultText);
+            break;
+        }
+    }
 }
 
 FString FAIEditorAssistantChatController::GetPendingToolApprovalPrompt() const

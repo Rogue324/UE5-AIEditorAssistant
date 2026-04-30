@@ -32,7 +32,7 @@ void SAIEditorAssistantSessionTabBar::Construct(const FArguments& InArgs)
 
         + SHorizontalBox::Slot()
         .AutoWidth()
-        .Padding(8.0f, 0.0f, 0.0f, 0.0f)
+        .Padding(12.0f, 0.0f, 0.0f, 0.0f)
         [
             SNew(SButton)
             .IsEnabled_Lambda([this]() { return bCanEditSessions; })
@@ -47,26 +47,9 @@ void SAIEditorAssistantSessionTabBar::Construct(const FArguments& InArgs)
             .ContentPadding(FMargin(8.0f, 3.0f))
             .ButtonColorAndOpacity(FLinearColor(0.56f, 0.56f, 0.58f, 1.0f))
             [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("+")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                ]
-
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("New Chat")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                ]
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("+ New Chat")))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
             ]
         ]
     ];
@@ -86,7 +69,7 @@ void SAIEditorAssistantSessionTabBar::Refresh(const FAIEditorAssistantChatPanelV
     {
         SessionTabsBox->AddSlot()
         .AutoWidth()
-        .Padding(0.0f, 0.0f, 6.0f, 0.0f)
+        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
         [
             BuildSessionTabWidget(SessionData, ViewState.bCanEditSessions)
         ];
@@ -95,58 +78,57 @@ void SAIEditorAssistantSessionTabBar::Refresh(const FAIEditorAssistantChatPanelV
 
 TSharedRef<SWidget> SAIEditorAssistantSessionTabBar::BuildSessionTabWidget(const FAIEditorAssistantSessionTabViewData& SessionData, bool bSessionsEditable)
 {
-    const FButtonStyle& ButtonStyle = FAppStyle::Get().GetWidgetStyle<FButtonStyle>("Button");
+    return SNew(SHorizontalBox)
 
-    return SNew(SBorder)
-        .BorderImage(&ButtonStyle.Normal)
-        .BorderBackgroundColor(SessionData.bIsActive ? FLinearColor(0.56f, 0.56f, 0.58f, 1.0f) : FLinearColor(0.42f, 0.42f, 0.44f, 1.0f))
-        .Padding(FMargin(2.0f, 1.0f))
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
         [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                .ButtonStyle(FAppStyle::Get(), "NoBorder")
-                .OnClicked_Lambda([this, SessionId = SessionData.SessionId]()
+            SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "NoBorder")
+            .OnClicked_Lambda([this, SessionId = SessionData.SessionId]()
+            {
+                if (OnSessionSelected.IsBound())
                 {
-                    if (OnSessionSelected.IsBound())
-                    {
-                        OnSessionSelected.Execute(SessionId);
-                    }
-                    return FReply::Handled();
-                })
-                .IsEnabled(bSessionsEditable)
-                .ContentPadding(FMargin(8.0f, 2.0f, 6.0f, 2.0f))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TruncateWithEllipsis(SessionData.Title, 22)))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                ]
+                    OnSessionSelected.Execute(SessionId);
+                }
+                return FReply::Handled();
+            })
+            .IsEnabled(bSessionsEditable)
+            .ContentPadding(FMargin(10.0f, 4.0f, 4.0f, 4.0f))
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TruncateWithEllipsis(SessionData.Title, 22)))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                .ColorAndOpacity(SessionData.bIsActive
+                    ? FSlateColor(FLinearColor(1.0f, 0.54f, 0.08f))
+                    : FSlateColor(FLinearColor(0.42f, 0.42f, 0.46f)))
             ]
+        ]
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                .ButtonStyle(FAppStyle::Get(), "NoBorder")
-                .OnClicked_Lambda([this, SessionId = SessionData.SessionId]()
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "NoBorder")
+            .OnClicked_Lambda([this, SessionId = SessionData.SessionId]()
+            {
+                if (OnSessionClosed.IsBound())
                 {
-                    if (OnSessionClosed.IsBound())
-                    {
-                        OnSessionClosed.Execute(SessionId);
-                    }
-                    return FReply::Handled();
-                })
-                .IsEnabled(bSessionsEditable)
-                .ContentPadding(FMargin(5.0f, 2.0f, 6.0f, 2.0f))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("x")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                ]
+                    OnSessionClosed.Execute(SessionId);
+                }
+                return FReply::Handled();
+            })
+            .IsEnabled(bSessionsEditable)
+            .ContentPadding(FMargin(4.0f, 4.0f, 8.0f, 4.0f))
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("\u00D7")))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                .ColorAndOpacity(SessionData.bIsActive
+                    ? FSlateColor(FLinearColor(0.60f, 0.60f, 0.64f))
+                    : FSlateColor(FLinearColor(0.36f, 0.36f, 0.40f)))
             ]
         ];
 }

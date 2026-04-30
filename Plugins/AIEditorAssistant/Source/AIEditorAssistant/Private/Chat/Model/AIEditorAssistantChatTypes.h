@@ -7,6 +7,7 @@ struct FAIEditorAssistantChatMessage
 {
     FString Role;
     FString Content;
+    FString ToolActivityContent;
 };
 
 struct FAIEditorAssistantPendingToolCall
@@ -87,9 +88,6 @@ struct FAIEditorAssistantChatPanelViewState
     FString ReasoningMode;
     TArray<FString> ReasoningModeOptions;
     FString ReasoningOptionsStatus;
-    TArray<FAIEditorAssistantAgentRoleViewData> AgentRoles;
-    FString ActiveAgentRoleId;
-    FString ActiveAgentRoleDisplayName;
     FString StatusMessage;
     FString SendButtonText;
     bool bCanSend = false;

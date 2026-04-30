@@ -969,11 +969,14 @@ namespace
             OutRequestData.bTreatProgressAsEventStream = true;
             RequestBody = BuildOpenAIChatBody(Settings, Request);
 
-            if (Settings.Provider == EAIEditorAssistantAPIProvider::DeepSeek && Settings.ReasoningIntensity != EAIEditorAssistantReasoningIntensity::ProviderDefault)
+            if (Settings.Provider == EAIEditorAssistantAPIProvider::DeepSeek)
             {
-                TSharedPtr<FJsonObject> ThinkingObject = MakeShared<FJsonObject>();
-                ThinkingObject->SetStringField(TEXT("type"), Settings.ReasoningIntensity == EAIEditorAssistantReasoningIntensity::Disabled ? TEXT("disabled") : TEXT("enabled"));
-                RequestBody->SetObjectField(TEXT("thinking"), ThinkingObject);
+                if (Settings.ReasoningIntensity != EAIEditorAssistantReasoningIntensity::ProviderDefault)
+                {
+                    TSharedPtr<FJsonObject> ThinkingObject = MakeShared<FJsonObject>();
+                    ThinkingObject->SetStringField(TEXT("type"), Settings.ReasoningIntensity == EAIEditorAssistantReasoningIntensity::Disabled ? TEXT("disabled") : TEXT("enabled"));
+                    RequestBody->SetObjectField(TEXT("thinking"), ThinkingObject);
+                }
             }
             break;
         }
@@ -1087,15 +1090,7 @@ namespace
 
     TArray<EAIEditorAssistantReasoningIntensity> BuildDefaultReasoningOptions(const EAIEditorAssistantAPIProvider Provider)
     {
-        if (Provider == EAIEditorAssistantAPIProvider::DeepSeek)
-        {
-            return {
-                EAIEditorAssistantReasoningIntensity::ProviderDefault,
-                EAIEditorAssistantReasoningIntensity::Disabled,
-                EAIEditorAssistantReasoningIntensity::Medium
-            };
-        }
-
+        (void)Provider;
         return {
             EAIEditorAssistantReasoningIntensity::ProviderDefault,
             EAIEditorAssistantReasoningIntensity::Disabled,

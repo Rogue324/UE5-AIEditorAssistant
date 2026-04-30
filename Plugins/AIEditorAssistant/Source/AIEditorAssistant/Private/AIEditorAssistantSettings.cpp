@@ -8,7 +8,6 @@ UAIEditorAssistantSettings::UAIEditorAssistantSettings()
     Model = TEXT("gpt-4o-mini");
     ReasoningIntensity = EAIEditorAssistantReasoningIntensity::Medium;
     MaxToolRounds = 500;
-    bShowToolActivityInChat = false;
 }
 
 FName UAIEditorAssistantSettings::GetContainerName() const

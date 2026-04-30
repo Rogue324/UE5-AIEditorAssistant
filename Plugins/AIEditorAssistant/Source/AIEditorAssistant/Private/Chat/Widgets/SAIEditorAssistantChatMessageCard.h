@@ -16,13 +16,23 @@ public:
 
 private:
     void RebuildForMessage(const FAIEditorAssistantChatMessage& InMessage, bool bInRenderMarkdown);
+    FReply OnToggleCollapse();
+    FReply OnToggleToolActivity();
 
     FAIEditorAssistantChatMessage CachedMessage;
     bool bRenderMarkdown = true;
+    bool bIsToolMessage = false;
+    bool bCollapsed = true;
+    bool bToolActivityCollapsed = true;
     TSharedPtr<class SHorizontalBox> RootRow;
     TSharedPtr<class SBox> BubbleWidthBox;
     TSharedPtr<class SBorder> BubbleBorder;
     TSharedPtr<class SRichTextBlock> RoleTextBlock;
+    TSharedPtr<class STextBlock> CollapseToggleText;
     TSharedPtr<class SAIEditorAssistantMarkdownMessageBody> MessageBody;
     TSharedPtr<class SMultiLineEditableText> PlainTextBody;
+    TSharedPtr<class SVerticalBox> BubbleContentBox;
+    TSharedPtr<class SBox> ContentArea;
+    TSharedPtr<class SBox> ToolActivityArea;
+    TSharedPtr<class STextBlock> ToolActivityToggleText;
 };

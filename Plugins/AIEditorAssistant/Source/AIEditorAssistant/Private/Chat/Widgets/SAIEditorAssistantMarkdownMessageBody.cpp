@@ -5,8 +5,8 @@
 #include "Framework/Text/RichTextLayoutMarshaller.h"
 #include "Framework/Text/SlateHyperlinkRun.h"
 #include "Framework/Text/TextDecorators.h"
-#include "HAL/PlatformProcess.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
@@ -201,20 +201,15 @@ namespace
     {
         FString Output = Source;
 
-        static const TCHAR* LegacyTokens[] =
-        {
-            TEXT("<MarkdownHeading>"),
-            TEXT("</MarkdownHeading>"),
-            TEXT("<MarkdownBold>"),
-            TEXT("</MarkdownBold>"),
-            TEXT("<MarkdownItalic>"),
-            TEXT("</MarkdownItalic>"),
-            TEXT("<MarkdownInlineCode>"),
-            TEXT("</MarkdownInlineCode>"),
-            TEXT("<MarkdownCodeBlock>"),
-            TEXT("</MarkdownCodeBlock>"),
-            TEXT("</>"),
-        };
+    static const TCHAR* LegacyTokens[] =
+    {
+        TEXT("<MarkdownHeading>"),
+        TEXT("</MarkdownHeading>"),
+        TEXT("<MarkdownInlineCode>"),
+        TEXT("</MarkdownInlineCode>"),
+        TEXT("<MarkdownCodeBlock>"),
+        TEXT("</MarkdownCodeBlock>"),
+    };
 
         for (const TCHAR* Token : LegacyTokens)
         {
@@ -242,8 +237,6 @@ namespace
         Output = ConvertLegacyCodeBlockTagsToMarkdown(Output);
         Output = ReplaceLegacyBrowserTags(Output);
         Output = ReplaceLegacyTagRange(Output, TEXT("MarkdownHeading"), TEXT("## "), TEXT(""));
-        Output = ReplaceLegacyTagRange(Output, TEXT("MarkdownBold"), TEXT("**"), TEXT("**"));
-        Output = ReplaceLegacyTagRange(Output, TEXT("MarkdownItalic"), TEXT("*"), TEXT("*"));
         Output = ReplaceLegacyTagRange(Output, TEXT("MarkdownInlineCode"), TEXT("`"), TEXT("`"));
         Output = StripResidualLegacyTags(Output);
 
@@ -289,6 +282,12 @@ void SAIEditorAssistantMarkdownMessageBody::Construct(const FArguments& InArgs)
 
 void SAIEditorAssistantMarkdownMessageBody::RefreshMarkdown(const FString& InMarkdownText)
 {
+    if (InMarkdownText.Equals(CachedMarkdownText, ESearchCase::CaseSensitive))
+    {
+        return;
+    }
+
+    CachedMarkdownText = InMarkdownText;
     RebuildContent(InMarkdownText);
 }
 
@@ -299,29 +298,50 @@ void SAIEditorAssistantMarkdownMessageBody::RebuildContent(const FString& InMark
         return;
     }
 
-    BodyContainer->ClearChildren();
-
     const FString PreprocessedMarkdown = PreprocessMarkdown(InMarkdownText);
     const TArray<FAIEditorAssistantMarkdownBlock> Blocks = FAIEditorAssistantMarkdownParser::ParseBlocks(PreprocessedMarkdown);
-    if (Blocks.Num() == 0)
+
+    const int32 NewBlockCount = Blocks.Num();
+
+    if (NewBlockCount == 0)
     {
+        BodyContainer->ClearChildren();
+        BlockBoxes.Reset();
         BodyContainer->AddSlot()
         .AutoHeight()
         [
-            BuildRichTextBlockWidget(TEXT(" "), TEXT("MarkdownBody"), FMargin(0.0f))
+            SAssignNew(BlockBoxes.AddDefaulted_GetRef(), SBox)
+            [
+                BuildRichTextBlockWidget(TEXT(" "), TEXT("MarkdownBody"), FMargin(0.0f))
+            ]
         ];
         return;
     }
 
-    for (int32 Index = 0; Index < Blocks.Num(); ++Index)
+    if (BlockBoxes.Num() != NewBlockCount)
     {
-        BodyContainer->AddSlot()
-        .AutoHeight()
-        .Padding(0.0f, 0.0f, 0.0f, Index + 1 < Blocks.Num() ? 10.0f : 0.0f)
-        [
-            BuildBlockWidget(Blocks[Index])
-        ];
+        BodyContainer->ClearChildren();
+        BlockBoxes.Reset();
+
+        for (int32 Index = 0; Index < NewBlockCount; ++Index)
+        {
+            TSharedPtr<SBox> Box;
+            BodyContainer->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, Index + 1 < NewBlockCount ? 10.0f : 0.0f)
+            [
+                SAssignNew(Box, SBox)
+                [
+                    BuildBlockWidget(Blocks[Index])
+                ]
+            ];
+            BlockBoxes.Add(Box);
+        }
+        return;
     }
+
+    BlockBoxes.Last()->SetContent(BuildBlockWidget(Blocks.Last()));
+    BlockBoxes.Last()->Invalidate(EInvalidateWidget::LayoutAndVolatility);
 }
 
 FString SAIEditorAssistantMarkdownMessageBody::BuildRenderableRichText(const FString& InMarkdownText) const
@@ -416,7 +436,7 @@ TSharedRef<SWidget> SAIEditorAssistantMarkdownMessageBody::BuildTableWidget(cons
             const FName BrushName = bIsHeader ? TEXT("TableHeaderBubble") : TEXT("TableCellBubble");
 
             Grid->AddSlot(ColumnIndex, RowIndex)
-            .Padding(2.0f)
+            .Padding(0.0f)
             [
                 SNew(SBorder)
                 .BorderImage(FAIEditorAssistantMarkdownRichTextRenderer::GetStyle().GetBrush(BrushName))
