@@ -75,6 +75,8 @@
 #include "Tools/Write/AddComponentTool.h"
 #include "Tools/Write/AddWidgetTool.h"
 #include "Tools/Write/AddDataTableRowTool.h"
+#include "Tools/Write/RemoveDataTableRowTool.h"
+#include "Tools/Write/EditDataTableRowTool.h"
 #include "Tools/Write/AddGraphNodeTool.h"
 #include "Tools/Write/RemoveGraphNodeTool.h"
 #include "Tools/Write/ConnectGraphPinsTool.h"
@@ -173,6 +175,8 @@ void FSoftUEBridgeEditorModule::StartupModule()
 	Registry.RegisterToolClass<UAddComponentTool>();
 	Registry.RegisterToolClass<UAddWidgetTool>();
 	Registry.RegisterToolClass<UAddDataTableRowTool>();
+	Registry.RegisterToolClass<URemoveDataTableRowTool>();
+	Registry.RegisterToolClass<UEditDataTableRowTool>();
 	Registry.RegisterToolClass<UAddGraphNodeTool>();
 	Registry.RegisterToolClass<URemoveGraphNodeTool>();
 	Registry.RegisterToolClass<UConnectGraphPinsTool>();
